@@ -3,6 +3,7 @@ import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { diffAgents } from "./core/diffAgents.js";
 import { generateAgentsContent } from "./core/generateAgents.js";
 import { scanProject } from "./core/scanProject.js";
@@ -56,11 +57,26 @@ async function runScan(args: string[]): Promise<void> {
 
 async function runDoctor(args: string[]): Promise<void> {
   const projectPath = getProjectPath(args);
+  const asJson = args.includes("--json");
   const result = await validateAgents(projectPath);
 
-  console.log(formatValidation(result));
+  if (asJson) {
+    console.log(
+      JSON.stringify(
+        {
+          issues: result.issues,
+          summary: result.summary,
+          status: result.status
+        },
+        null,
+        2
+      )
+    );
+  } else {
+    console.log(formatValidation(result));
+  }
 
-  if (result.issues.some((issue) => issue.severity === "error")) {
+  if (result.summary.errors > 0) {
     process.exitCode = 1;
   }
 }
@@ -74,6 +90,7 @@ async function runGenerate(args: string[]): Promise<void> {
 
 async function runApply(args: string[]): Promise<void> {
   const projectPath = getProjectPath(args);
+  const assumeYes = args.includes("--yes");
   const scan = await scanProject(projectPath);
   const agentsPath = path.join(scan.absolutePath, "AGENTS.md");
   const oldContent = await readTextIfExists(agentsPath);
@@ -92,13 +109,26 @@ async function runApply(args: string[]): Promise<void> {
     console.log(newContent);
   }
 
-  const confirmed = await askConfirmation(
-    `Write suggested AGENTS.md to ${agentsPath}?`
+  const action = oldContent === null ? "create" : "overwrite";
+  console.log(
+    oldContent === null
+      ? `Will create ${agentsPath}.`
+      : `Will overwrite ${agentsPath} and write backup to ${agentsPath}.bak.`
   );
+
+  const confirmed =
+    assumeYes ||
+    (await askConfirmation(
+      `${capitalize(action)} suggested AGENTS.md at ${agentsPath}?`
+    ));
 
   if (!confirmed) {
     console.log("Aborted.");
     return;
+  }
+
+  if (assumeYes) {
+    console.log(`--yes supplied; proceeding to ${action} AGENTS.md.`);
   }
 
   if (oldContent !== null) {
@@ -140,13 +170,20 @@ function formatScan(scan: ProjectScan): string {
 }
 
 function formatValidation(result: AgentsValidationResult): string {
-  if (result.issues.length === 0) {
-    return "No AGENTS.md issues found.";
-  }
+  const lines =
+    result.issues.length === 0
+      ? ["No AGENTS.md issues found."]
+      : result.issues.map((issue) => `[${issue.severity}] ${issue.message}`);
 
-  return result.issues
-    .map((issue) => `[${issue.severity}] ${issue.message}`)
-    .join("\n");
+  return [
+    ...lines,
+    "",
+    `Summary: ${formatCount(result.summary.errors, "error")}, ${formatCount(
+      result.summary.warnings,
+      "warning"
+    )}, ${formatCount(result.summary.infos, "info", "infos")}`,
+    `Status: ${result.status}`
+  ].join("\n");
 }
 
 function formatScripts(scripts: Record<string, string>): string[] {
@@ -165,6 +202,14 @@ function formatList(values: string[]): string {
 
 function formatBoolean(value: boolean): string {
   return value ? "yes" : "no";
+}
+
+function formatCount(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function capitalize(value: string): string {
+  return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
 }
 
 async function askConfirmation(question: string): Promise<boolean> {
@@ -188,8 +233,17 @@ Examples:
   npm run dev -- generate .`);
 }
 
-main().catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error);
-  console.error(`Error: ${message}`);
-  process.exitCode = 1;
-});
+if (isDirectRun()) {
+  main().catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Error: ${message}`);
+    process.exitCode = 1;
+  });
+}
+
+function isDirectRun(): boolean {
+  return Boolean(
+    process.argv[1] &&
+      path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+  );
+}

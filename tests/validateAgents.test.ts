@@ -77,6 +77,54 @@ describe("validateAgents", () => {
       ])
     );
   });
+
+  it("calculates healthy summary and status when no issues are found", async () => {
+    const fixture = await createFixture();
+    await fs.writeFile(
+      path.join(fixture, "AGENTS.md"),
+      "Use the existing project conventions.",
+      "utf8"
+    );
+
+    const result = await validateAgents(fixture, {
+      globalAgentsPath: path.join(fixture, "missing-global.md")
+    });
+
+    expect(result.summary).toEqual({ errors: 0, warnings: 0, infos: 0 });
+    expect(result.status).toBe("healthy");
+  });
+
+  it("calculates needs attention status when warnings are found", async () => {
+    const fixture = await createFixture();
+
+    const result = await validateAgents(fixture, {
+      globalAgentsPath: path.join(fixture, "missing-global.md")
+    });
+
+    expect(result.summary).toEqual({ errors: 0, warnings: 1, infos: 0 });
+    expect(result.status).toBe("needs attention");
+  });
+
+  it("calculates broken status when errors are found", async () => {
+    const fixture = await createFixture();
+    await writeJson(path.join(fixture, "package.json"), {
+      scripts: {
+        test: "vitest run"
+      }
+    });
+    await fs.writeFile(
+      path.join(fixture, "AGENTS.md"),
+      "Run npm run build before finishing.",
+      "utf8"
+    );
+
+    const result = await validateAgents(fixture, {
+      globalAgentsPath: path.join(fixture, "missing-global.md")
+    });
+
+    expect(result.summary.errors).toBe(1);
+    expect(result.status).toBe("broken");
+  });
 });
 
 async function createFixture(): Promise<string> {

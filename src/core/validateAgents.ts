@@ -5,8 +5,10 @@ import { readPackageJson } from "./readPackageJson.js";
 import { scanProject } from "./scanProject.js";
 import type {
   AgentsValidationResult,
+  DoctorStatus,
   PackageManager,
   ProjectScan,
+  ValidationSummary,
   ValidationIssue
 } from "./types.js";
 
@@ -61,7 +63,7 @@ export async function validateAgents(
       message: "AGENTS.md was not found."
     });
 
-    return { scan, issues };
+    return buildValidationResult(scan, issues);
   }
 
   validateLength(agentsContent, issues);
@@ -71,7 +73,50 @@ export async function validateAgents(
   await validateFreshness(scan, issues);
   await validateGlobalConflict(scan, issues, options.globalAgentsPath);
 
-  return { scan, issues };
+  return buildValidationResult(scan, issues);
+}
+
+export function summarizeIssues(issues: ValidationIssue[]): ValidationSummary {
+  return issues.reduce<ValidationSummary>(
+    (summary, issue) => {
+      if (issue.severity === "error") {
+        summary.errors += 1;
+      } else if (issue.severity === "warning") {
+        summary.warnings += 1;
+      } else {
+        summary.infos += 1;
+      }
+
+      return summary;
+    },
+    { errors: 0, warnings: 0, infos: 0 }
+  );
+}
+
+export function getDoctorStatus(summary: ValidationSummary): DoctorStatus {
+  if (summary.errors > 0) {
+    return "broken";
+  }
+
+  if (summary.warnings > 0 || summary.infos > 0) {
+    return "needs attention";
+  }
+
+  return "healthy";
+}
+
+function buildValidationResult(
+  scan: ProjectScan,
+  issues: ValidationIssue[]
+): AgentsValidationResult {
+  const summary = summarizeIssues(issues);
+
+  return {
+    scan,
+    issues,
+    summary,
+    status: getDoctorStatus(summary)
+  };
 }
 
 function validateLength(content: string, issues: ValidationIssue[]): void {

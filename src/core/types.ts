@@ -12,6 +12,8 @@ export type MainLanguage =
 
 export type IssueSeverity = "error" | "warning" | "info";
 
+export type DoctorStatus = "healthy" | "needs attention" | "broken";
+
 export interface PackageJson {
   name?: string;
   description?: string;
@@ -45,7 +47,15 @@ export interface ValidationIssue {
   message: string;
 }
 
+export interface ValidationSummary {
+  errors: number;
+  warnings: number;
+  infos: number;
+}
+
 export interface AgentsValidationResult {
   scan: ProjectScan;
   issues: ValidationIssue[];
+  summary: ValidationSummary;
+  status: DoctorStatus;
 }
