@@ -103,6 +103,29 @@ describe("cli", () => {
     expect(backupContent).toBe("old instructions\n");
     expect(newContent).toContain("Updated instructions.");
   });
+
+  it("suggest --json returns structured JSON", async () => {
+    const fixture = await createFixture();
+    await writeJson(path.join(fixture, "package.json"), {
+      description: "Suggest fixture."
+    });
+
+    const result = await runCli(["suggest", fixture, "--json"]);
+    const parsed = JSON.parse(result.stdout) as {
+      scan: unknown;
+      validation: unknown;
+      generatedAgents: string;
+      evidenceFiles: unknown[];
+      prompt: string;
+    };
+
+    expect(result.code).toBe(0);
+    expect(parsed.scan).toEqual(expect.any(Object));
+    expect(parsed.validation).toEqual(expect.any(Object));
+    expect(parsed.generatedAgents).toContain("Suggest fixture.");
+    expect(parsed.evidenceFiles).toEqual(expect.any(Array));
+    expect(parsed.prompt).toContain("## Current generated AGENTS.md");
+  });
 });
 
 async function createFixture(): Promise<string> {

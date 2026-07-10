@@ -59,3 +59,21 @@ export interface AgentsValidationResult {
   summary: ValidationSummary;
   status: DoctorStatus;
 }
+
+export interface EvidenceFile {
+  path: string;
+  content: string;
+  truncated: boolean;
+}
+
+export interface SuggestResult {
+  scan: ProjectScan;
+  validation: {
+    issues: ValidationIssue[];
+    summary: ValidationSummary;
+    status: DoctorStatus;
+  };
+  generatedAgents: string;
+  evidenceFiles: EvidenceFile[];
+  prompt: string;
+}

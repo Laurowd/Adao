@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { diffAgents } from "./core/diffAgents.js";
 import { generateAgentsContent } from "./core/generateAgents.js";
 import { scanProject } from "./core/scanProject.js";
+import { createSuggestResult } from "./core/suggestAgents.js";
 import type { AgentsValidationResult, ProjectScan } from "./core/types.js";
 import { validateAgents } from "./core/validateAgents.js";
 import { readTextIfExists } from "./utils/fs.js";
@@ -36,6 +37,11 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
 
   if (command === "apply") {
     await runApply(argv.slice(1));
+    return;
+  }
+
+  if (command === "suggest") {
+    await runSuggest(argv.slice(1));
     return;
   }
 
@@ -140,6 +146,19 @@ async function runApply(args: string[]): Promise<void> {
   console.log(`Updated ${agentsPath}`);
 }
 
+async function runSuggest(args: string[]): Promise<void> {
+  const projectPath = getProjectPath(args);
+  const asJson = args.includes("--json");
+  const result = await createSuggestResult(projectPath);
+
+  if (asJson) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  console.log(result.prompt);
+}
+
 function getProjectPath(args: string[]): string {
   const projectPath = args.find((arg) => !arg.startsWith("-"));
 
@@ -226,11 +245,13 @@ function printUsage(): void {
   adao doctor <projectPath>
   adao generate <projectPath>
   adao apply <projectPath>
+  adao suggest <projectPath> [--json]
 
 Examples:
   npm run dev -- scan .
   npm run dev -- doctor .
-  npm run dev -- generate .`);
+  npm run dev -- generate .
+  npm run dev -- suggest .`);
 }
 
 if (isDirectRun()) {

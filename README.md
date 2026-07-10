@@ -20,6 +20,7 @@ npm install
 npm run dev -- scan .
 npm run dev -- doctor .
 npm run dev -- generate .
+npm run dev -- suggest .
 ```
 
 Build and test:
@@ -95,6 +96,21 @@ The generated overview only uses reliable local sources:
 
 When no commands or structure can be detected, Adao writes explicit TODOs instead of inventing context. If scripts such as `test`, `build`, `lint`, or `typecheck` exist, `generate` also adds a `Validation` section with the relevant commands.
 
+### suggest
+
+Prepare a Markdown prompt that can be pasted into Codex or ChatGPT to improve `AGENTS.md`.
+
+```bash
+npm run dev -- suggest .
+npm run dev -- suggest . --json
+```
+
+`suggest` does not call an AI service, does not use the OpenAI API, and does not send project files anywhere. It only uses local scan results, the current generated `AGENTS.md`, the current doctor validation result, and a conservative set of local evidence files.
+
+Use `generate` when you want Adao's deterministic local AGENTS.md draft. Use `suggest` when you want a structured prompt for a separate AI review while keeping Adao itself local-first and deterministic.
+
+The prompt instructs the AI to use only provided evidence, preserve detected commands, avoid inventing project goals or architecture, and write TODOs when evidence is missing.
+
 ### apply
 
 Generate the suggested `AGENTS.md`, show a diff when the file already exists, ask for confirmation, and create `AGENTS.md.bak` before overwriting.
@@ -114,6 +130,7 @@ src/
     readPackageJson.ts
     validateAgents.ts
     generateAgents.ts
+    suggestAgents.ts
     diffAgents.ts
     types.ts
   utils/
@@ -123,4 +140,6 @@ tests/
   scanProject.test.ts
   validateAgents.test.ts
   generateAgents.test.ts
+  suggestAgents.test.ts
+  cli.test.ts
 ```
