@@ -1,0 +1,158 @@
+import type { MainLanguage, PackageJson, PackageManager } from "./types.js";
+
+const LANGUAGE_RULES: Array<{ language: MainLanguage; extensions: string[] }> = [
+  { language: "TypeScript", extensions: [".ts", ".tsx", ".mts", ".cts"] },
+  { language: "JavaScript", extensions: [".js", ".jsx", ".mjs", ".cjs"] },
+  { language: "Python", extensions: [".py"] },
+  { language: "Java", extensions: [".java"] },
+  { language: "C#", extensions: [".cs"] },
+  {
+    language: "C/C++",
+    extensions: [".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hh"]
+  },
+  { language: "Rust", extensions: [".rs"] },
+  { language: "Go", extensions: [".go"] }
+];
+
+const IMPORTANT_EXACT_FILES = new Set([
+  "package.json",
+  "tsconfig.json",
+  "Dockerfile",
+  "docker-compose.yml",
+  "prisma/schema.prisma",
+  ".env.example"
+]);
+
+const PROJECT_STRUCTURE_DIRS = [
+  "src",
+  "tests",
+  "test",
+  "prisma",
+  "app",
+  "pages",
+  "components",
+  "lib"
+];
+
+export function detectPackageManager(files: string[]): PackageManager {
+  const fileSet = new Set(files);
+
+  if (fileSet.has("pnpm-lock.yaml")) {
+    return "pnpm";
+  }
+
+  if (fileSet.has("package-lock.json")) {
+    return "npm";
+  }
+
+  if (fileSet.has("yarn.lock")) {
+    return "yarn";
+  }
+
+  if (fileSet.has("bun.lockb") || fileSet.has("bun.lock")) {
+    return "bun";
+  }
+
+  return null;
+}
+
+export function detectLanguages(files: string[]): MainLanguage[] {
+  const detected = new Set<MainLanguage>();
+
+  for (const file of files) {
+    const lowerFile = file.toLowerCase();
+
+    for (const rule of LANGUAGE_RULES) {
+      if (rule.extensions.some((extension) => lowerFile.endsWith(extension))) {
+        detected.add(rule.language);
+      }
+    }
+  }
+
+  return LANGUAGE_RULES.map((rule) => rule.language).filter((language) =>
+    detected.has(language)
+  );
+}
+
+export function detectFrameworksAndTools(
+  packageJson: PackageJson | null
+): string[] {
+  const dependencies = getAllDependencies(packageJson);
+  const detected: string[] = [];
+
+  addIfDependency(detected, dependencies, "React", ["react"]);
+  addIfDependency(detected, dependencies, "Next.js", ["next"]);
+  addIfDependency(detected, dependencies, "Vite", ["vite"]);
+  addIfDependency(detected, dependencies, "Express", ["express"]);
+  addIfDependency(detected, dependencies, "NestJS", ["@nestjs/core"]);
+  addIfDependency(detected, dependencies, "Prisma", ["prisma", "@prisma/client"]);
+  addIfDependency(detected, dependencies, "Tailwind CSS", ["tailwindcss"]);
+  addIfDependency(detected, dependencies, "Vitest", ["vitest"]);
+  addIfDependency(detected, dependencies, "Jest", ["jest"]);
+  addIfDependency(detected, dependencies, "Playwright", [
+    "@playwright/test",
+    "playwright"
+  ]);
+  addIfDependency(detected, dependencies, "ESLint", ["eslint"]);
+  addIfDependency(detected, dependencies, "Prettier", ["prettier"]);
+
+  return detected;
+}
+
+export function detectImportantFiles(files: string[]): string[] {
+  return files.filter(
+    (file) =>
+      IMPORTANT_EXACT_FILES.has(file) ||
+      /^vite\.config\./.test(file) ||
+      /^next\.config\./.test(file) ||
+      /^eslint\.config\./.test(file)
+  );
+}
+
+export function detectProjectStructure(files: string[]): string[] {
+  const structure = new Set<string>();
+
+  for (const file of files) {
+    const [topLevel] = file.split("/");
+
+    if (topLevel && PROJECT_STRUCTURE_DIRS.includes(topLevel)) {
+      structure.add(`${topLevel}/`);
+    }
+  }
+
+  return PROJECT_STRUCTURE_DIRS.map((directory) => `${directory}/`).filter(
+    (directory) => structure.has(directory)
+  );
+}
+
+function getAllDependencies(packageJson: PackageJson | null): Set<string> {
+  const dependencies = new Set<string>();
+
+  if (!packageJson) {
+    return dependencies;
+  }
+
+  for (const group of [
+    packageJson.dependencies,
+    packageJson.devDependencies,
+    packageJson.peerDependencies,
+    packageJson.optionalDependencies
+  ]) {
+    for (const dependencyName of Object.keys(group ?? {})) {
+      dependencies.add(dependencyName);
+    }
+  }
+
+  return dependencies;
+}
+
+function addIfDependency(
+  detected: string[],
+  dependencies: Set<string>,
+  label: string,
+  packageNames: string[]
+): void {
+  if (packageNames.some((packageName) => dependencies.has(packageName))) {
+    detected.push(label);
+  }
+}

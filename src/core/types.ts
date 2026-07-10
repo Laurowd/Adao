@@ -1,0 +1,49 @@
+export type PackageManager = "pnpm" | "npm" | "yarn" | "bun" | null;
+
+export type MainLanguage =
+  | "TypeScript"
+  | "JavaScript"
+  | "Python"
+  | "Java"
+  | "C#"
+  | "C/C++"
+  | "Rust"
+  | "Go";
+
+export type IssueSeverity = "error" | "warning" | "info";
+
+export interface PackageJson {
+  name?: string;
+  description?: string;
+  scripts?: Record<string, string>;
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
+}
+
+export interface ProjectScan {
+  projectName: string;
+  packageDescription?: string;
+  absolutePath: string;
+  isGitRepository: boolean;
+  hasAgents: boolean;
+  hasReadme: boolean;
+  packageManager: PackageManager;
+  languages: MainLanguage[];
+  frameworks: string[];
+  scripts: Record<string, string>;
+  importantFiles: string[];
+  projectStructure: string[];
+}
+
+export interface ValidationIssue {
+  severity: IssueSeverity;
+  code: string;
+  message: string;
+}
+
+export interface AgentsValidationResult {
+  scan: ProjectScan;
+  issues: ValidationIssue[];
+}

@@ -1,0 +1,23 @@
+{
+  "name": "adao",
+  "version": "0.1.0",
+  "description": "Local context doctor for AI coding agent projects.",
+  "type": "module",
+  "bin": {
+    "adao": "dist/cli.js"
+  },
+  "scripts": {
+    "dev": "node --import tsx src/cli.ts",
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^3.2.7"
+  }
+}
