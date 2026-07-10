@@ -53,6 +53,7 @@ README.md: yes
 Package manager: npm
 Languages: TypeScript
 Frameworks/tools: Vitest
+Project structure: src/, tests/
 Scripts:
   dev: node --import tsx src/cli.ts
   build: tsc -p tsconfig.json
@@ -85,6 +86,14 @@ Print a suggested `AGENTS.md` without writing to disk.
 ```bash
 npm run dev -- generate .
 ```
+
+The generated overview only uses reliable local sources:
+
+1. `package.json.description`
+2. the first heading or useful paragraph from `README.md`
+3. `TODO: describe the project goal.`
+
+When no commands or structure can be detected, Adao writes explicit TODOs instead of inventing context. If scripts such as `test`, `build`, `lint`, or `typecheck` exist, `generate` also adds a `Validation` section with the relevant commands.
 
 ### apply
 

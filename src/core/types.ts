@@ -25,6 +25,8 @@ export interface PackageJson {
 export interface ProjectScan {
   projectName: string;
   packageDescription?: string;
+  projectOverview?: string;
+  projectOverviewSource?: "package.json" | "README.md";
   absolutePath: string;
   isGitRepository: boolean;
   hasAgents: boolean;

@@ -52,10 +52,25 @@ export async function listFilesRecursive(
   rootPath: string,
   maxFiles = 5000
 ): Promise<string[]> {
+  const paths = await listProjectPathsRecursive(rootPath, maxFiles);
+
+  return paths.files;
+}
+
+export interface ProjectPaths {
+  files: string[];
+  directories: string[];
+}
+
+export async function listProjectPathsRecursive(
+  rootPath: string,
+  maxEntries = 5000
+): Promise<ProjectPaths> {
   const files: string[] = [];
+  const directories: string[] = [];
 
   async function walk(currentPath: string): Promise<void> {
-    if (files.length >= maxFiles) {
+    if (files.length + directories.length >= maxEntries) {
       return;
     }
 
@@ -69,7 +84,7 @@ export async function listFilesRecursive(
     entries.sort((a, b) => a.name.localeCompare(b.name));
 
     for (const entry of entries) {
-      if (files.length >= maxFiles) {
+      if (files.length + directories.length >= maxEntries) {
         return;
       }
 
@@ -82,6 +97,7 @@ export async function listFilesRecursive(
 
       if (entry.isDirectory()) {
         if (!IGNORED_DIRECTORIES.has(entry.name)) {
+          directories.push(`${relativePath}/`);
           await walk(fullPath);
         }
         continue;
@@ -94,7 +110,7 @@ export async function listFilesRecursive(
   }
 
   await walk(rootPath);
-  return files;
+  return { files, directories };
 }
 
 function isNotFoundError(error: unknown): boolean {

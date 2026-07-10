@@ -5,23 +5,51 @@ const COMMAND_DESCRIPTIONS: Record<string, string> = {
   build: "Build project",
   test: "Run tests",
   lint: "Run linting",
-  format: "Format code"
+  format: "Format code",
+  typecheck: "Run type checks",
+  start: "Start the application"
 };
 
-const COMMON_SCRIPT_ORDER = ["dev", "build", "test", "lint", "format"];
+const COMMON_SCRIPT_ORDER = [
+  "dev",
+  "build",
+  "test",
+  "lint",
+  "format",
+  "typecheck",
+  "start"
+];
+
+const VALIDATION_SCRIPT_ORDER = ["test", "build", "lint", "typecheck"];
 
 const STRUCTURE_DESCRIPTIONS: Record<string, string> = {
   "src/": "Main source code",
-  "tests/": "Automated tests",
-  "test/": "Automated tests",
-  "prisma/": "Database schema and Prisma migrations",
   "app/": "Application routes or screens",
   "pages/": "Page routes",
   "components/": "Reusable UI components",
-  "lib/": "Shared library code"
+  "tests/": "Automated tests",
+  "__tests__/": "Automated tests",
+  "docs/": "Project documentation",
+  "test/": "Automated tests",
+  "prisma/": "Database schema and Prisma migrations",
+  "lib/": "Shared library code",
+  ".github/workflows/": "GitHub Actions workflows"
 };
 
 export function generateAgentsContent(scan: ProjectScan): string {
+  const validationLines = buildValidationLines(scan);
+  const validationSection =
+    validationLines.length > 0
+      ? [
+          "",
+          "## Validation",
+          "",
+          "Before finishing code changes, run the relevant checks when possible:",
+          "",
+          ...validationLines
+        ]
+      : [];
+
   return [
     "# AGENTS.md",
     "",
@@ -40,6 +68,7 @@ export function generateAgentsContent(scan: ProjectScan): string {
     "## Project structure",
     "",
     ...buildProjectStructureLines(scan),
+    ...validationSection,
     "",
     "## Agent rules",
     "",
@@ -53,19 +82,11 @@ export function generateAgentsContent(scan: ProjectScan): string {
 }
 
 function buildProjectOverview(scan: ProjectScan): string {
-  if (scan.packageDescription) {
-    return scan.packageDescription;
+  if (scan.projectOverview) {
+    return scan.projectOverview;
   }
 
-  const detectedStack = [...scan.frameworks, ...scan.languages];
-
-  if (detectedStack.length > 0) {
-    return `This appears to be the ${scan.projectName} project, using ${detectedStack
-      .slice(0, 4)
-      .join(", ")}.`;
-  }
-
-  return "Project objective should be filled in manually.";
+  return "TODO: describe the project goal.";
 }
 
 function buildTechStackLines(scan: ProjectScan): string[] {
@@ -84,22 +105,20 @@ function buildTechStackLines(scan: ProjectScan): string[] {
   }
 
   if (lines.length === 0) {
-    return ["- No primary stack detected yet."];
+    return ["- TODO: document the project stack."];
   }
 
   return lines;
 }
 
 function buildCommandLines(scan: ProjectScan): string[] {
-  const lines = COMMON_SCRIPT_ORDER.filter((scriptName) =>
-    Boolean(scan.scripts[scriptName])
-  ).map(
+  const lines = sortScriptNames(Object.keys(scan.scripts)).map(
     (scriptName) =>
-      `- \`${formatScriptCommand(scan.packageManager, scriptName)}\`: ${COMMAND_DESCRIPTIONS[scriptName]}`
+      `- \`${formatScriptCommand(scan.packageManager, scriptName)}\`: ${getCommandDescription(scriptName)}`
   );
 
   if (lines.length === 0) {
-    return ["- No common package scripts detected."];
+    return ["- TODO: document common commands."];
   }
 
   return lines;
@@ -113,19 +132,41 @@ function buildProjectStructureLines(scan: ProjectScan): string[] {
     return `- \`${directory}\`: ${description}`;
   });
 
-  if (scan.importantFiles.includes("package.json")) {
-    lines.push("- `package.json`: Node.js package metadata and scripts");
-  }
-
-  if (scan.importantFiles.includes("tsconfig.json")) {
-    lines.push("- `tsconfig.json`: TypeScript compiler configuration");
-  }
-
   if (lines.length === 0) {
-    return ["- Project structure should be filled in manually."];
+    return ["- TODO: document the relevant project structure."];
   }
 
   return lines;
+}
+
+function buildValidationLines(scan: ProjectScan): string[] {
+  return VALIDATION_SCRIPT_ORDER.filter((scriptName) =>
+    Boolean(scan.scripts[scriptName])
+  ).map(
+    (scriptName) =>
+      `- \`${formatScriptCommand(scan.packageManager, scriptName)}\``
+  );
+}
+
+function sortScriptNames(scriptNames: string[]): string[] {
+  const order = new Map(
+    COMMON_SCRIPT_ORDER.map((scriptName, index) => [scriptName, index])
+  );
+
+  return [...scriptNames].sort((left, right) => {
+    const leftIndex = order.get(left) ?? Number.POSITIVE_INFINITY;
+    const rightIndex = order.get(right) ?? Number.POSITIVE_INFINITY;
+
+    if (leftIndex !== rightIndex) {
+      return leftIndex - rightIndex;
+    }
+
+    return left.localeCompare(right);
+  });
+}
+
+function getCommandDescription(scriptName: string): string {
+  return COMMAND_DESCRIPTIONS[scriptName] ?? `Run the ${scriptName} script`;
 }
 
 function formatScriptCommand(

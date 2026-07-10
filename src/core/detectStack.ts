@@ -18,6 +18,9 @@ const IMPORTANT_EXACT_FILES = new Set([
   "package.json",
   "tsconfig.json",
   "Dockerfile",
+  "compose.yaml",
+  "compose.yml",
+  "docker-compose.yaml",
   "docker-compose.yml",
   "prisma/schema.prisma",
   ".env.example"
@@ -25,14 +28,18 @@ const IMPORTANT_EXACT_FILES = new Set([
 
 const PROJECT_STRUCTURE_DIRS = [
   "src",
-  "tests",
-  "test",
-  "prisma",
   "app",
   "pages",
   "components",
+  "tests",
+  "__tests__",
+  "docs",
+  "test",
+  "prisma",
   "lib"
 ];
+
+const SPECIAL_STRUCTURE_DIRS = [".github/workflows/"];
 
 export function detectPackageManager(files: string[]): PackageManager {
   const fileSet = new Set(files);
@@ -109,8 +116,23 @@ export function detectImportantFiles(files: string[]): string[] {
   );
 }
 
-export function detectProjectStructure(files: string[]): string[] {
+export function detectProjectStructure(
+  files: string[],
+  directories: string[] = []
+): string[] {
   const structure = new Set<string>();
+
+  for (const directory of directories) {
+    const normalizedDirectory = directory.replace(/\/+$/, "");
+
+    if (PROJECT_STRUCTURE_DIRS.includes(normalizedDirectory)) {
+      structure.add(`${normalizedDirectory}/`);
+    }
+
+    if (directory === ".github/workflows/") {
+      structure.add(directory);
+    }
+  }
 
   for (const file of files) {
     const [topLevel] = file.split("/");
@@ -118,11 +140,16 @@ export function detectProjectStructure(files: string[]): string[] {
     if (topLevel && PROJECT_STRUCTURE_DIRS.includes(topLevel)) {
       structure.add(`${topLevel}/`);
     }
+
+    if (file.startsWith(".github/workflows/")) {
+      structure.add(".github/workflows/");
+    }
   }
 
-  return PROJECT_STRUCTURE_DIRS.map((directory) => `${directory}/`).filter(
-    (directory) => structure.has(directory)
-  );
+  return [
+    ...PROJECT_STRUCTURE_DIRS.map((directory) => `${directory}/`),
+    ...SPECIAL_STRUCTURE_DIRS
+  ].filter((directory) => structure.has(directory));
 }
 
 function getAllDependencies(packageJson: PackageJson | null): Set<string> {

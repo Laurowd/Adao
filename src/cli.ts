@@ -130,6 +130,7 @@ function formatScan(scan: ProjectScan): string {
     `Package manager: ${scan.packageManager ?? "not detected"}`,
     `Languages: ${formatList(scan.languages)}`,
     `Frameworks/tools: ${formatList(scan.frameworks)}`,
+    `Project structure: ${formatList(scan.projectStructure)}`,
     "Scripts:",
     ...formatScripts(scan.scripts),
     `Important files: ${formatList(scan.importantFiles)}`

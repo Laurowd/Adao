@@ -43,11 +43,121 @@ describe("generateAgentsContent", () => {
     expect(content).toContain("`pnpm dev`: Start development server");
     expect(content).toContain("`pnpm build`: Build project");
     expect(content).toContain("`pnpm test`: Run tests");
+    expect(content).toContain("## Validation");
+    expect(content).toContain("- `pnpm test`");
+    expect(content).toContain("- `pnpm build`");
     expect(content).not.toContain("npm run dev");
     expect(content).toContain("`src/`: Main source code");
     expect(content).toContain(
       "Do not change package manager unless explicitly requested."
     );
+  });
+
+  it("uses a TODO overview when no reliable source describes the project", async () => {
+    const fixture = await createFixture();
+    await fs.mkdir(path.join(fixture, "src"));
+    await fs.writeFile(path.join(fixture, "src", "index.ts"), "", "utf8");
+
+    const scan = await scanProject(fixture);
+    const content = generateAgentsContent(scan);
+
+    expect(content).toContain("TODO: describe the project goal.");
+    expect(content).not.toContain("This appears to be");
+    expect(content).toContain("TODO: document common commands.");
+  });
+
+  it("uses README heading as overview when package.json has no description", async () => {
+    const fixture = await createFixture();
+    await writeJson(path.join(fixture, "package.json"), {
+      name: "demo"
+    });
+    await fs.writeFile(
+      path.join(fixture, "README.md"),
+      "# Payments API\n\nHandles billing workflows.",
+      "utf8"
+    );
+
+    const scan = await scanProject(fixture);
+    const content = generateAgentsContent(scan);
+
+    expect(scan.projectOverviewSource).toBe("README.md");
+    expect(content).toContain("Payments API");
+    expect(content).not.toContain("TODO: describe the project goal.");
+  });
+
+  it("uses the first useful README paragraph when it appears before a heading", async () => {
+    const fixture = await createFixture();
+    await fs.writeFile(
+      path.join(fixture, "README.md"),
+      "A practical workflow tracker for finance teams.\n\n## Install\n\nRun npm install.",
+      "utf8"
+    );
+
+    const scan = await scanProject(fixture);
+    const content = generateAgentsContent(scan);
+
+    expect(scan.projectOverviewSource).toBe("README.md");
+    expect(content).toContain(
+      "A practical workflow tracker for finance teams."
+    );
+    expect(content).not.toContain("Install");
+  });
+
+  it("uses package description before README content", async () => {
+    const fixture = await createFixture();
+    await writeJson(path.join(fixture, "package.json"), {
+      description: "Package description wins."
+    });
+    await fs.writeFile(
+      path.join(fixture, "README.md"),
+      "# README heading should not win",
+      "utf8"
+    );
+
+    const scan = await scanProject(fixture);
+    const content = generateAgentsContent(scan);
+
+    expect(scan.projectOverviewSource).toBe("package.json");
+    expect(content).toContain("Package description wins.");
+    expect(content).not.toContain("README heading should not win");
+  });
+
+  it("orders known scripts before other scripts and adds validation commands", async () => {
+    const fixture = await createFixture();
+    await fs.writeFile(path.join(fixture, "package-lock.json"), "", "utf8");
+    await writeJson(path.join(fixture, "package.json"), {
+      scripts: {
+        seed: "node seed.js",
+        start: "node dist/index.js",
+        typecheck: "tsc --noEmit",
+        format: "prettier --write .",
+        lint: "eslint .",
+        test: "vitest run",
+        build: "tsc",
+        dev: "tsx src/index.ts"
+      }
+    });
+
+    const scan = await scanProject(fixture);
+    const content = generateAgentsContent(scan);
+
+    expect(content.indexOf("`npm run dev`")).toBeLessThan(
+      content.indexOf("`npm run build`")
+    );
+    expect(content.indexOf("`npm run build`")).toBeLessThan(
+      content.indexOf("`npm run test`")
+    );
+    expect(content.indexOf("`npm run typecheck`")).toBeLessThan(
+      content.indexOf("`npm run start`")
+    );
+    expect(content.indexOf("`npm run start`")).toBeLessThan(
+      content.indexOf("`npm run seed`")
+    );
+    expect(content).toContain("Before finishing code changes");
+    expect(content).toContain("- `npm run test`");
+    expect(content).toContain("- `npm run build`");
+    expect(content).toContain("- `npm run lint`");
+    expect(content).toContain("- `npm run typecheck`");
   });
 });
 

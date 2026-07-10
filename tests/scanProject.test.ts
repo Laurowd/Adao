@@ -70,6 +70,60 @@ describe("scanProject", () => {
       expect.arrayContaining(["React", "Vite", "Vitest"])
     );
   });
+
+  it("detects additional important files and project structure directories", async () => {
+    const fixture = await createFixture();
+    await fs.mkdir(path.join(fixture, "src"));
+    await fs.mkdir(path.join(fixture, "app"));
+    await fs.mkdir(path.join(fixture, "pages"));
+    await fs.mkdir(path.join(fixture, "components"));
+    await fs.mkdir(path.join(fixture, "tests"));
+    await fs.mkdir(path.join(fixture, "__tests__"));
+    await fs.mkdir(path.join(fixture, "docs"));
+    await fs.mkdir(path.join(fixture, ".github", "workflows"), {
+      recursive: true
+    });
+    await fs.writeFile(path.join(fixture, "src", "index.ts"), "", "utf8");
+    await fs.writeFile(path.join(fixture, "app", "page.tsx"), "", "utf8");
+    await fs.writeFile(path.join(fixture, "pages", "index.tsx"), "", "utf8");
+    await fs.writeFile(
+      path.join(fixture, "components", "button.tsx"),
+      "",
+      "utf8"
+    );
+    await fs.writeFile(path.join(fixture, "tests", "app.test.ts"), "", "utf8");
+    await fs.writeFile(
+      path.join(fixture, "__tests__", "unit.test.ts"),
+      "",
+      "utf8"
+    );
+    await fs.writeFile(path.join(fixture, "docs", "usage.md"), "", "utf8");
+    await fs.writeFile(
+      path.join(fixture, ".github", "workflows", "ci.yml"),
+      "",
+      "utf8"
+    );
+    await fs.writeFile(path.join(fixture, "compose.yaml"), "", "utf8");
+    await fs.writeFile(path.join(fixture, "docker-compose.yaml"), "", "utf8");
+
+    const scan = await scanProject(fixture);
+
+    expect(scan.projectStructure).toEqual(
+      expect.arrayContaining([
+        "src/",
+        "app/",
+        "pages/",
+        "components/",
+        "tests/",
+        "__tests__/",
+        "docs/",
+        ".github/workflows/"
+      ])
+    );
+    expect(scan.importantFiles).toEqual(
+      expect.arrayContaining(["compose.yaml", "docker-compose.yaml"])
+    );
+  });
 });
 
 async function createFixture(): Promise<string> {
