@@ -60,6 +60,107 @@ describe("cli", () => {
     expect(result.stdout).toContain("Summary: 1 error");
   });
 
+  it.each(["scan", "doctor", "generate", "suggest"])(
+    "%s rejects malformed package.json with an actionable message",
+    async (command) => {
+      const fixture = await createFixture();
+      const packageJsonPath = path.join(fixture, "package.json");
+      await fs.writeFile(packageJsonPath, '{"scripts": {', "utf8");
+
+      await expect(runCli([command, fixture])).rejects.toThrow(
+        `package.json at ${packageJsonPath} contains malformed JSON`
+      );
+    }
+  );
+
+  it("scan exposes package manager conflicts in text and JSON", async () => {
+    const fixture = await createFixture();
+    await fs.writeFile(path.join(fixture, "package-lock.json"), "", "utf8");
+    await writeJson(path.join(fixture, "package.json"), {
+      packageManager: "pnpm@9.1.0"
+    });
+
+    const textResult = await runCli(["scan", fixture]);
+    const jsonResult = await runCli(["scan", fixture, "--json"]);
+    const parsed = JSON.parse(jsonResult.stdout) as {
+      packageManager: null;
+      packageManagerEvidence: { conflict: boolean };
+    };
+
+    expect(textResult.stdout).toContain(
+      "Package manager: conflict (lockfile: npm, package.json: pnpm@9.1.0)"
+    );
+    expect(parsed.packageManager).toBeNull();
+    expect(parsed.packageManagerEvidence.conflict).toBe(true);
+    await expect(runCli(["generate", fixture])).rejects.toThrow(
+      "package manager conflict"
+    );
+  });
+
+  it("generate rejects an unrecognized packageManager without lockfile evidence", async () => {
+    const fixture = await createFixture();
+    const packageJsonPath = path.join(fixture, "package.json");
+    await writeJson(packageJsonPath, {
+      packageManager: "unknown@1.0.0",
+      scripts: { test: "vitest run" }
+    });
+
+    await expect(runCli(["generate", fixture])).rejects.toThrow(
+      `package.json at ${packageJsonPath} declares unrecognized packageManager value`
+    );
+  });
+
+  it("apply rejects malformed package.json before confirmation or writes", async () => {
+    const fixture = await createFixture();
+    const agentsPath = path.join(fixture, "AGENTS.md");
+    const previous = "manual instructions\n";
+    await fs.writeFile(agentsPath, previous, "utf8");
+    await fs.writeFile(path.join(fixture, "package.json"), "{", "utf8");
+    let confirmationRequested = false;
+
+    await expect(
+      runCli(["apply", fixture], async () => {
+        confirmationRequested = true;
+        return true;
+      })
+    ).rejects.toThrow("package.json");
+
+    expect(confirmationRequested).toBe(false);
+    expect(await fs.readFile(agentsPath, "utf8")).toBe(previous);
+    expect(
+      (await fs.readdir(fixture)).some(
+        (file) => file.includes(".bak") || file.includes("adao.tmp")
+      )
+    ).toBe(false);
+  });
+
+  it("apply rejects package manager conflicts before confirmation or writes", async () => {
+    const fixture = await createFixture();
+    const agentsPath = path.join(fixture, "AGENTS.md");
+    const previous = "manual instructions\n";
+    await fs.writeFile(agentsPath, previous, "utf8");
+    await fs.writeFile(path.join(fixture, "package-lock.json"), "", "utf8");
+    await writeJson(path.join(fixture, "package.json"), {
+      packageManager: "pnpm@9.1.0"
+    });
+    let confirmationRequested = false;
+
+    await expect(
+      runCli(["apply", fixture], async () => {
+        confirmationRequested = true;
+        return true;
+      })
+    ).rejects.toThrow("package manager conflict");
+
+    expect(confirmationRequested).toBe(false);
+    expect(await fs.readFile(agentsPath, "utf8")).toBe(previous);
+    expect(
+      (await fs.readdir(fixture)).some(
+        (file) => file.includes(".bak") || file.includes("adao.tmp")
+      )
+    ).toBe(false);
+  });
+
   it("scan text and JSON expose incomplete scan metadata", async () => {
     const fixture = await createTruncatedFixture();
     const scanOptions = { entryLimit: 1 };

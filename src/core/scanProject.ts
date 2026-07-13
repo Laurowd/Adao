@@ -4,8 +4,8 @@ import {
   detectFrameworksAndTools,
   detectImportantFiles,
   detectLanguages,
-  detectPackageManager,
-  detectProjectStructure
+  detectProjectStructure,
+  resolvePackageManager
 } from "./detectStack.js";
 import { readPackageJson } from "./readPackageJson.js";
 import type { PackageJson, ProjectScan } from "./types.js";
@@ -41,6 +41,10 @@ export async function scanProject(
   const packageJson = await readPackageJson(absolutePath);
   const scripts = packageJson?.scripts ?? {};
   const projectName = packageJson?.name ?? path.basename(absolutePath);
+  const packageManagerResolution = resolvePackageManager(
+    files,
+    packageJson?.packageManager
+  );
   const readmePath = files.find((file) => /^readme\.md$/i.test(file));
   const readmeContent = readmePath
     ? await readTextIfExists(path.join(absolutePath, readmePath))
@@ -56,7 +60,8 @@ export async function scanProject(
     isGitRepository: await isGitRepository(absolutePath),
     hasAgents: files.includes("AGENTS.md"),
     hasReadme: files.some((file) => /^readme\.md$/i.test(file)),
-    packageManager: detectPackageManager(files),
+    packageManager: packageManagerResolution.packageManager,
+    packageManagerEvidence: packageManagerResolution.evidence,
     languages: detectLanguages(files),
     frameworks: detectFrameworksAndTools(packageJson),
     scripts,
@@ -72,6 +77,38 @@ export async function scanProject(
         !projectPaths.unreadablePaths.some((unreadable) => unreadable.blocking)
     }
   };
+}
+
+export function assertNoPackageManagerConflict(
+  scan: ProjectScan,
+  operation: string
+): void {
+  if (!scan.packageManagerEvidence.conflict) {
+    return;
+  }
+
+  throw new Error(
+    `Cannot ${operation}: package manager conflict. Lockfile indicates ${scan.packageManagerEvidence.lockfile}, but package.json at ${path.join(scan.absolutePath, "package.json")} declares ${scan.packageManagerEvidence.packageJsonValue}.`
+  );
+}
+
+export function assertRecognizedPackageManagerDeclaration(
+  scan: ProjectScan,
+  operation: string
+): void {
+  const evidence = scan.packageManagerEvidence;
+
+  if (
+    !evidence.packageJsonValue ||
+    evidence.packageJson !== null ||
+    evidence.lockfile !== null
+  ) {
+    return;
+  }
+
+  throw new Error(
+    `Cannot ${operation}: package.json at ${path.join(scan.absolutePath, "package.json")} declares unrecognized packageManager value "${evidence.packageJsonValue}" and no recognized lockfile is available.`
+  );
 }
 
 export function assertCompleteProjectScan(

@@ -19,6 +19,7 @@ export type DoctorStatus = "healthy" | "needs attention" | "broken";
 export interface PackageJson {
   name?: string;
   description?: string;
+  packageManager?: string;
   scripts?: Record<string, string>;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
@@ -36,12 +37,20 @@ export interface ProjectScan {
   hasAgents: boolean;
   hasReadme: boolean;
   packageManager: PackageManager;
+  packageManagerEvidence: PackageManagerEvidence;
   languages: MainLanguage[];
   frameworks: string[];
   scripts: Record<string, string>;
   importantFiles: string[];
   projectStructure: string[];
   scanMetadata: ScanMetadata;
+}
+
+export interface PackageManagerEvidence {
+  lockfile: PackageManager;
+  packageJson: PackageManager;
+  packageJsonValue?: string;
+  conflict: boolean;
 }
 
 export interface ScanMetadata {

@@ -1,4 +1,9 @@
-import type { MainLanguage, PackageJson, PackageManager } from "./types.js";
+import type {
+  MainLanguage,
+  PackageJson,
+  PackageManager,
+  PackageManagerEvidence
+} from "./types.js";
 
 const LANGUAGE_RULES: Array<{ language: MainLanguage; extensions: string[] }> = [
   { language: "TypeScript", extensions: [".ts", ".tsx", ".mts", ".cts"] },
@@ -61,6 +66,40 @@ export function detectPackageManager(files: string[]): PackageManager {
   }
 
   return null;
+}
+
+export function resolvePackageManager(
+  files: string[],
+  packageManagerValue?: string
+): { packageManager: PackageManager; evidence: PackageManagerEvidence } {
+  const lockfile = detectPackageManager(files);
+  const packageJson = parsePackageManagerValue(packageManagerValue);
+  const conflict =
+    lockfile !== null && packageJson !== null && lockfile !== packageJson;
+
+  return {
+    packageManager: conflict ? null : (lockfile ?? packageJson),
+    evidence: {
+      lockfile,
+      packageJson,
+      packageJsonValue: packageManagerValue,
+      conflict
+    }
+  };
+}
+
+function parsePackageManagerValue(value?: string): PackageManager {
+  const match = value?.match(/^(npm|pnpm|yarn|bun)@[^\s]+$/);
+
+  switch (match?.[1]) {
+    case "npm":
+    case "pnpm":
+    case "yarn":
+    case "bun":
+      return match[1];
+    default:
+      return null;
+  }
 }
 
 export function detectLanguages(files: string[]): MainLanguage[] {

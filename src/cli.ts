@@ -12,6 +12,8 @@ import { diffAgents } from "./core/diffAgents.js";
 import { generateAgentsContent } from "./core/generateAgents.js";
 import {
   assertCompleteProjectScan,
+  assertNoPackageManagerConflict,
+  assertRecognizedPackageManagerDeclaration,
   formatIncompleteScanReasons,
   scanProject,
   type ScanProjectOptions
@@ -127,6 +129,8 @@ async function runApply(
   const assumeYes = args.includes("--yes");
   const scan = await scanProject(projectPath, scanOptions);
   assertCompleteProjectScan(scan, "apply AGENTS.md");
+  assertNoPackageManagerConflict(scan, "apply AGENTS.md");
+  assertRecognizedPackageManagerDeclaration(scan, "apply AGENTS.md");
   const agentsPath = path.join(scan.absolutePath, "AGENTS.md");
   const oldContent = await readAgentsContent(agentsPath);
   const update = prepareAgentsUpdate(oldContent, generateAgentsContent(scan));
@@ -215,7 +219,7 @@ function formatScan(scan: ProjectScan): string {
     `Git repository: ${formatBoolean(scan.isGitRepository)}`,
     `AGENTS.md: ${formatBoolean(scan.hasAgents)}`,
     `README.md: ${formatBoolean(scan.hasReadme)}`,
-    `Package manager: ${scan.packageManager ?? "not detected"}`,
+    `Package manager: ${formatPackageManager(scan)}`,
     `Languages: ${formatList(scan.languages)}`,
     `Frameworks/tools: ${formatList(scan.frameworks)}`,
     `Project structure: ${formatList(scan.projectStructure)}`,
@@ -234,6 +238,22 @@ function formatScan(scan: ProjectScan): string {
   }
 
   return lines.join("\n");
+}
+
+function formatPackageManager(scan: ProjectScan): string {
+  if (scan.packageManagerEvidence.conflict) {
+    return `conflict (lockfile: ${scan.packageManagerEvidence.lockfile}, package.json: ${scan.packageManagerEvidence.packageJsonValue})`;
+  }
+
+  if (scan.packageManager) {
+    return scan.packageManager;
+  }
+
+  if (scan.packageManagerEvidence.packageJsonValue) {
+    return `not detected (unrecognized package.json value: ${scan.packageManagerEvidence.packageJsonValue})`;
+  }
+
+  return "not detected";
 }
 
 function formatUnreadablePaths(scan: ProjectScan): string {

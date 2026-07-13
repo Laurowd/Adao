@@ -78,6 +78,75 @@ describe("scanProject", () => {
     });
   });
 
+  it("uses a recognized packageManager value when no lockfile exists", async () => {
+    const fixture = await createFixture();
+    await writeJson(path.join(fixture, "package.json"), {
+      packageManager: "pnpm@9.1.0"
+    });
+
+    const scan = await scanProject(fixture);
+
+    expect(scan.packageManager).toBe("pnpm");
+    expect(scan.packageManagerEvidence).toEqual({
+      lockfile: null,
+      packageJson: "pnpm",
+      packageJsonValue: "pnpm@9.1.0",
+      conflict: false
+    });
+  });
+
+  it("uses matching packageManager and lockfile evidence", async () => {
+    const fixture = await createFixture();
+    await fs.writeFile(path.join(fixture, "yarn.lock"), "", "utf8");
+    await writeJson(path.join(fixture, "package.json"), {
+      packageManager: "yarn@4.5.0"
+    });
+
+    const scan = await scanProject(fixture);
+
+    expect(scan.packageManager).toBe("yarn");
+    expect(scan.packageManagerEvidence).toMatchObject({
+      lockfile: "yarn",
+      packageJson: "yarn",
+      conflict: false
+    });
+  });
+
+  it("records an unrecognized packageManager without selecting it", async () => {
+    const fixture = await createFixture();
+    await writeJson(path.join(fixture, "package.json"), {
+      packageManager: "unknown@1.0.0"
+    });
+
+    const scan = await scanProject(fixture);
+
+    expect(scan.packageManager).toBeNull();
+    expect(scan.packageManagerEvidence).toEqual({
+      lockfile: null,
+      packageJson: null,
+      packageJsonValue: "unknown@1.0.0",
+      conflict: false
+    });
+  });
+
+  it("represents a conflict between packageManager and lockfile", async () => {
+    const fixture = await createFixture();
+    await fs.writeFile(path.join(fixture, "package-lock.json"), "", "utf8");
+    await writeJson(path.join(fixture, "package.json"), {
+      packageManager: "pnpm@9.1.0"
+    });
+
+    const scan = await scanProject(fixture);
+
+    expect(scan.packageManager).toBeNull();
+    expect(scan.packageManagerEvidence).toEqual({
+      lockfile: "npm",
+      packageJson: "pnpm",
+      packageJsonValue: "pnpm@9.1.0",
+      conflict: true
+    });
+  });
+
   it("detects important root files before a large directory reaches the limit", async () => {
     const fixture = await createFixture();
     await fs.mkdir(path.join(fixture, "large"));

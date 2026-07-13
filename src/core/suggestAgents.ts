@@ -3,6 +3,8 @@ import path from "node:path";
 import { generateAgentsContent } from "./generateAgents.js";
 import {
   assertCompleteProjectScan,
+  assertNoPackageManagerConflict,
+  assertRecognizedPackageManagerDeclaration,
   scanProject,
   type ScanProjectOptions
 } from "./scanProject.js";
@@ -41,6 +43,8 @@ export async function createSuggestResult(
 ): Promise<SuggestResult> {
   const scan = await scanProject(projectPath, scanOptions);
   assertCompleteProjectScan(scan, "create suggestion");
+  assertNoPackageManagerConflict(scan, "create suggestion");
+  assertRecognizedPackageManagerDeclaration(scan, "create suggestion");
   const generatedAgents = generateAgentsContent(scan);
   const validationResult = await validateAgents(projectPath, { scan });
   const evidenceFiles = await selectEvidenceFiles(scan);
