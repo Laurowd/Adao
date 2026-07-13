@@ -10,8 +10,20 @@ AI coding agents depend on reliable project context. A stale, vague, or oversize
 
 ## Install
 
+The `0.1.0` package is prepared for npm but has not been published yet. After
+publication, it can be installed or executed with:
+
+```bash
+npm install -g @laurowd/adao
+npx @laurowd/adao --help
+```
+
+For local development from a checkout:
+
 ```bash
 npm install
+npm run build
+node dist/cli.js --help
 ```
 
 ## Develop
@@ -28,6 +40,7 @@ Build and test:
 ```bash
 npm run build
 npm test
+npm run test:package
 ```
 
 After building, the CLI entry is available at `dist/cli.js`. The package also exposes the `adao` binary when installed as a package.

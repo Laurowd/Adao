@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { createInterface } from "node:readline/promises";
+import { realpathSync } from "node:fs";
 import { stdin as input, stdout as output } from "node:process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -434,8 +435,16 @@ if (isDirectRun()) {
 }
 
 function isDirectRun(): boolean {
-  return Boolean(
-    process.argv[1] &&
-      path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-  );
+  if (!process.argv[1]) {
+    return false;
+  }
+
+  try {
+    return (
+      realpathSync(path.resolve(process.argv[1])) ===
+      realpathSync(fileURLToPath(import.meta.url))
+    );
+  } catch {
+    return false;
+  }
 }

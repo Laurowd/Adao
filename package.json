@@ -1,15 +1,41 @@
 {
-  "name": "adao",
+  "name": "@laurowd/adao",
   "version": "0.1.0",
-  "description": "Local context doctor for AI coding agent projects.",
+  "description": "Local-first CLI for scanning projects and maintaining reliable AGENTS.md context.",
+  "keywords": [
+    "agents.md",
+    "ai-agents",
+    "cli",
+    "developer-tools",
+    "typescript"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Laurowd/Adao.git"
+  },
+  "homepage": "https://github.com/Laurowd/Adao#readme",
+  "bugs": {
+    "url": "https://github.com/Laurowd/Adao/issues"
+  },
   "type": "module",
+  "files": [
+    "dist/",
+    "README.md"
+  ],
   "bin": {
     "adao": "dist/cli.js"
   },
   "scripts": {
     "dev": "node --import tsx src/cli.ts",
+    "clean": "node scripts/clean.mjs",
+    "prebuild": "npm run clean",
     "build": "tsc -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepack": "npm run build",
+    "test:package": "node scripts/package-smoke.mjs"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "engines": {
     "node": ">=18"
