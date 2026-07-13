@@ -1,3 +1,5 @@
+import type { UnreadableProjectPath } from "../utils/fs.js";
+
 export type PackageManager = "pnpm" | "npm" | "yarn" | "bun" | null;
 
 export type MainLanguage =
@@ -39,6 +41,15 @@ export interface ProjectScan {
   scripts: Record<string, string>;
   importantFiles: string[];
   projectStructure: string[];
+  scanMetadata: ScanMetadata;
+}
+
+export interface ScanMetadata {
+  entriesScanned: number;
+  entryLimit: number;
+  truncated: boolean;
+  unreadablePaths: UnreadableProjectPath[];
+  complete: boolean;
 }
 
 export interface ValidationIssue {

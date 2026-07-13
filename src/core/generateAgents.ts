@@ -1,5 +1,6 @@
 import type { PackageManager, ProjectScan } from "./types.js";
 import { wrapManagedAgentsContent } from "./applyAgents.js";
+import { assertCompleteProjectScan } from "./scanProject.js";
 
 const COMMAND_DESCRIPTIONS: Record<string, string> = {
   dev: "Start development server",
@@ -38,6 +39,8 @@ const STRUCTURE_DESCRIPTIONS: Record<string, string> = {
 };
 
 export function generateAgentsContent(scan: ProjectScan): string {
+  assertCompleteProjectScan(scan, "generate AGENTS.md");
+
   const validationLines = buildValidationLines(scan);
   const validationSection =
     validationLines.length > 0

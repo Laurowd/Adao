@@ -2,7 +2,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathExists, readTextIfExists, statIfExists } from "../utils/fs.js";
 import { readPackageJson } from "./readPackageJson.js";
-import { scanProject } from "./scanProject.js";
+import { formatIncompleteScanReasons, scanProject } from "./scanProject.js";
 import type {
   AgentsValidationResult,
   DoctorStatus,
@@ -55,6 +55,14 @@ export async function validateAgents(
   const agentsPath = path.join(scan.absolutePath, "AGENTS.md");
   const issues: ValidationIssue[] = [];
   const agentsContent = await readTextIfExists(agentsPath);
+
+  if (!scan.scanMetadata.complete) {
+    issues.push({
+      severity: "error",
+      code: "scan-incomplete",
+      message: `Project scan is incomplete, so AGENTS.md validation may be incomplete: ${formatIncompleteScanReasons(scan)}.`
+    });
+  }
 
   if (agentsContent === null) {
     issues.push({

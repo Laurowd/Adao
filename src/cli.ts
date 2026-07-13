@@ -10,7 +10,12 @@ import {
 } from "./core/applyAgents.js";
 import { diffAgents } from "./core/diffAgents.js";
 import { generateAgentsContent } from "./core/generateAgents.js";
-import { scanProject } from "./core/scanProject.js";
+import {
+  assertCompleteProjectScan,
+  formatIncompleteScanReasons,
+  scanProject,
+  type ScanProjectOptions
+} from "./core/scanProject.js";
 import { createSuggestResult } from "./core/suggestAgents.js";
 import type { AgentsValidationResult, ProjectScan } from "./core/types.js";
 import { validateAgents } from "./core/validateAgents.js";
@@ -19,7 +24,8 @@ type ConfirmAction = (question: string) => Promise<boolean>;
 
 export async function main(
   argv = process.argv.slice(2),
-  confirmAction: ConfirmAction = askConfirmation
+  confirmAction: ConfirmAction = askConfirmation,
+  scanOptions: ScanProjectOptions = {}
 ): Promise<void> {
   const command = argv[0];
 
@@ -29,37 +35,40 @@ export async function main(
   }
 
   if (command === "scan") {
-    await runScan(argv.slice(1));
+    await runScan(argv.slice(1), scanOptions);
     return;
   }
 
   if (command === "doctor") {
-    await runDoctor(argv.slice(1));
+    await runDoctor(argv.slice(1), scanOptions);
     return;
   }
 
   if (command === "generate") {
-    await runGenerate(argv.slice(1));
+    await runGenerate(argv.slice(1), scanOptions);
     return;
   }
 
   if (command === "apply") {
-    await runApply(argv.slice(1), confirmAction);
+    await runApply(argv.slice(1), confirmAction, scanOptions);
     return;
   }
 
   if (command === "suggest") {
-    await runSuggest(argv.slice(1));
+    await runSuggest(argv.slice(1), scanOptions);
     return;
   }
 
   throw new Error(`Unknown command: ${command}`);
 }
 
-async function runScan(args: string[]): Promise<void> {
+async function runScan(
+  args: string[],
+  scanOptions: ScanProjectOptions
+): Promise<void> {
   const projectPath = getProjectPath(args);
   const asJson = args.includes("--json");
-  const scan = await scanProject(projectPath);
+  const scan = await scanProject(projectPath, scanOptions);
 
   if (asJson) {
     console.log(JSON.stringify(scan, null, 2));
@@ -69,10 +78,14 @@ async function runScan(args: string[]): Promise<void> {
   console.log(formatScan(scan));
 }
 
-async function runDoctor(args: string[]): Promise<void> {
+async function runDoctor(
+  args: string[],
+  scanOptions: ScanProjectOptions
+): Promise<void> {
   const projectPath = getProjectPath(args);
   const asJson = args.includes("--json");
-  const result = await validateAgents(projectPath);
+  const scan = await scanProject(projectPath, scanOptions);
+  const result = await validateAgents(projectPath, { scan });
 
   if (asJson) {
     console.log(
@@ -95,20 +108,25 @@ async function runDoctor(args: string[]): Promise<void> {
   }
 }
 
-async function runGenerate(args: string[]): Promise<void> {
+async function runGenerate(
+  args: string[],
+  scanOptions: ScanProjectOptions
+): Promise<void> {
   const projectPath = getProjectPath(args);
-  const scan = await scanProject(projectPath);
+  const scan = await scanProject(projectPath, scanOptions);
 
   console.log(generateAgentsContent(scan));
 }
 
 async function runApply(
   args: string[],
-  confirmAction: ConfirmAction
+  confirmAction: ConfirmAction,
+  scanOptions: ScanProjectOptions
 ): Promise<void> {
   const projectPath = getProjectPath(args);
   const assumeYes = args.includes("--yes");
-  const scan = await scanProject(projectPath);
+  const scan = await scanProject(projectPath, scanOptions);
+  assertCompleteProjectScan(scan, "apply AGENTS.md");
   const agentsPath = path.join(scan.absolutePath, "AGENTS.md");
   const oldContent = await readAgentsContent(agentsPath);
   const update = prepareAgentsUpdate(oldContent, generateAgentsContent(scan));
@@ -164,10 +182,13 @@ async function runApply(
   console.log(`Updated ${agentsPath}`);
 }
 
-async function runSuggest(args: string[]): Promise<void> {
+async function runSuggest(
+  args: string[],
+  scanOptions: ScanProjectOptions
+): Promise<void> {
   const projectPath = getProjectPath(args);
   const asJson = args.includes("--json");
-  const result = await createSuggestResult(projectPath);
+  const result = await createSuggestResult(projectPath, scanOptions);
 
   if (asJson) {
     console.log(JSON.stringify(result, null, 2));
@@ -200,10 +221,32 @@ function formatScan(scan: ProjectScan): string {
     `Project structure: ${formatList(scan.projectStructure)}`,
     "Scripts:",
     ...formatScripts(scan.scripts),
-    `Important files: ${formatList(scan.importantFiles)}`
+    `Important files: ${formatList(scan.importantFiles)}`,
+    `Scan completeness: ${scan.scanMetadata.complete ? "complete" : "incomplete"}`,
+    `Entries scanned: ${scan.scanMetadata.entriesScanned} (limit: ${scan.scanMetadata.entryLimit})`,
+    `Unreadable paths: ${formatUnreadablePaths(scan)}`
   ];
 
+  if (!scan.scanMetadata.complete) {
+    lines.push(
+      `WARNING: Scan results are partial and must not be used for generate, suggest, or apply (${formatIncompleteScanReasons(scan)}).`
+    );
+  }
+
   return lines.join("\n");
+}
+
+function formatUnreadablePaths(scan: ProjectScan): string {
+  if (scan.scanMetadata.unreadablePaths.length === 0) {
+    return "none";
+  }
+
+  return scan.scanMetadata.unreadablePaths
+    .map(
+      (unreadable) =>
+        `${unreadable.path} [${unreadable.code ?? unreadable.category}]${unreadable.blocking ? "" : " (transient)"}`
+    )
+    .join(", ");
 }
 
 function formatValidation(result: AgentsValidationResult): string {

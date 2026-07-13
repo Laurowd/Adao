@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { scanProject } from "../src/core/scanProject.js";
 import type { PackageManager } from "../src/core/types.js";
 
@@ -9,6 +9,7 @@ const tempDirs: string[] = [];
 
 describe("scanProject", () => {
   afterEach(async () => {
+    vi.restoreAllMocks();
     await Promise.all(
       tempDirs.splice(0).map((directory) =>
         fs.rm(directory, { recursive: true, force: true })
@@ -69,6 +70,66 @@ describe("scanProject", () => {
     expect(scan.frameworks).toEqual(
       expect.arrayContaining(["React", "Vite", "Vitest"])
     );
+    expect(scan.scanMetadata).toMatchObject({
+      entryLimit: 5000,
+      truncated: false,
+      unreadablePaths: [],
+      complete: true
+    });
+  });
+
+  it("detects important root files before a large directory reaches the limit", async () => {
+    const fixture = await createFixture();
+    await fs.mkdir(path.join(fixture, "large"));
+    await fs.writeFile(path.join(fixture, "large", "one.ts"), "", "utf8");
+    await fs.writeFile(path.join(fixture, "large", "two.ts"), "", "utf8");
+    await writeJson(path.join(fixture, "package.json"), { name: "root-first" });
+    await fs.writeFile(path.join(fixture, "package-lock.json"), "", "utf8");
+    await fs.writeFile(path.join(fixture, "tsconfig.json"), "{}", "utf8");
+
+    const scan = await scanProject(fixture, { entryLimit: 4 });
+
+    expect(scan.scanMetadata).toMatchObject({
+      entriesScanned: 4,
+      entryLimit: 4,
+      truncated: true,
+      complete: false
+    });
+    expect(scan.projectName).toBe("root-first");
+    expect(scan.packageManager).toBe("npm");
+    expect(scan.importantFiles).toEqual(
+      expect.arrayContaining(["package.json", "tsconfig.json"])
+    );
+  });
+
+  it("marks the scan incomplete when a directory cannot be read", async () => {
+    const fixture = await createFixture();
+    const blockedPath = path.join(fixture, "blocked");
+    await fs.mkdir(blockedPath);
+    const originalReaddir = fs.readdir.bind(fs);
+
+    vi.spyOn(fs, "readdir").mockImplementation(async (directoryPath, options) => {
+      if (path.resolve(String(directoryPath)) === blockedPath) {
+        throw Object.assign(new Error("permission denied"), { code: "EACCES" });
+      }
+
+      return originalReaddir(directoryPath, options);
+    });
+
+    const scan = await scanProject(fixture);
+
+    expect(scan.scanMetadata).toMatchObject({
+      truncated: false,
+      complete: false,
+      unreadablePaths: [
+        {
+          path: "blocked/",
+          code: "EACCES",
+          category: "permission",
+          blocking: true
+        }
+      ]
+    });
   });
 
   it("detects additional important files and project structure directories", async () => {

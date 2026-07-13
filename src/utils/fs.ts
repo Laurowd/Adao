@@ -15,6 +15,8 @@ const IGNORED_DIRECTORIES = new Set([
   "vendor"
 ]);
 
+export const DEFAULT_SCAN_ENTRY_LIMIT = 5000;
+
 export async function pathExists(filePath: string): Promise<boolean> {
   try {
     await fs.access(filePath);
@@ -50,7 +52,7 @@ export async function statIfExists(filePath: string): Promise<Stats | null> {
 
 export async function listFilesRecursive(
   rootPath: string,
-  maxFiles = 5000
+  maxFiles = DEFAULT_SCAN_ENTRY_LIMIT
 ): Promise<string[]> {
   const paths = await listProjectPathsRecursive(rootPath, maxFiles);
 
@@ -60,45 +62,70 @@ export async function listFilesRecursive(
 export interface ProjectPaths {
   files: string[];
   directories: string[];
+  entriesScanned: number;
+  entryLimit: number;
+  truncated: boolean;
+  unreadablePaths: UnreadableProjectPath[];
+}
+
+export interface UnreadableProjectPath {
+  path: string;
+  code?: string;
+  category: "transient" | "permission" | "filesystem";
+  blocking: boolean;
 }
 
 export async function listProjectPathsRecursive(
   rootPath: string,
-  maxEntries = 5000
+  maxEntries = DEFAULT_SCAN_ENTRY_LIMIT
 ): Promise<ProjectPaths> {
   const files: string[] = [];
   const directories: string[] = [];
+  const unreadablePaths: UnreadableProjectPath[] = [];
+  const pendingDirectories: Array<{
+    absolutePath: string;
+    relativePath: string;
+  }> = [{ absolutePath: rootPath, relativePath: "." }];
+  let entriesScanned = 0;
+  let truncated = false;
 
-  async function walk(currentPath: string): Promise<void> {
-    if (files.length + directories.length >= maxEntries) {
-      return;
-    }
-
+  while (pendingDirectories.length > 0) {
+    const currentDirectory = pendingDirectories.shift()!;
     let entries;
+
     try {
-      entries = await fs.readdir(currentPath, { withFileTypes: true });
-    } catch {
-      return;
+      entries = await fs.readdir(currentDirectory.absolutePath, {
+        withFileTypes: true
+      });
+    } catch (error) {
+      unreadablePaths.push(toUnreadablePath(currentDirectory.relativePath, error));
+      continue;
     }
 
     entries.sort((a, b) => a.name.localeCompare(b.name));
 
     for (const entry of entries) {
-      if (files.length + directories.length >= maxEntries) {
-        return;
+      if (entriesScanned >= maxEntries) {
+        truncated = true;
+        break;
       }
+
+      entriesScanned += 1;
 
       if (entry.isSymbolicLink()) {
         continue;
       }
 
-      const fullPath = path.join(currentPath, entry.name);
+      const fullPath = path.join(currentDirectory.absolutePath, entry.name);
       const relativePath = toPosixPath(path.relative(rootPath, fullPath));
 
       if (entry.isDirectory()) {
         if (!IGNORED_DIRECTORIES.has(entry.name)) {
           directories.push(`${relativePath}/`);
-          await walk(fullPath);
+          pendingDirectories.push({
+            absolutePath: fullPath,
+            relativePath: `${relativePath}/`
+          });
         }
         continue;
       }
@@ -107,10 +134,61 @@ export async function listProjectPathsRecursive(
         files.push(relativePath);
       }
     }
+
+    if (truncated) {
+      break;
+    }
   }
 
-  await walk(rootPath);
-  return { files, directories };
+  return {
+    files,
+    directories,
+    entriesScanned,
+    entryLimit: maxEntries,
+    truncated,
+    unreadablePaths
+  };
+}
+
+function toUnreadablePath(
+  relativePath: string,
+  error: unknown
+): UnreadableProjectPath {
+  const code = getErrorCode(error);
+
+  if (code === "ENOENT") {
+    return {
+      path: relativePath,
+      code,
+      category: "transient",
+      blocking: false
+    };
+  }
+
+  if (code === "EACCES" || code === "EPERM") {
+    return {
+      path: relativePath,
+      code,
+      category: "permission",
+      blocking: true
+    };
+  }
+
+  return {
+    path: relativePath,
+    code,
+    category: "filesystem",
+    blocking: true
+  };
+}
+
+function getErrorCode(error: unknown): string | undefined {
+  return typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof error.code === "string"
+    ? error.code
+    : undefined;
 }
 
 function isNotFoundError(error: unknown): boolean {

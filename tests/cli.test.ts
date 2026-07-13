@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { main } from "../src/cli.js";
+import type { ScanProjectOptions } from "../src/core/scanProject.js";
 
 const tempDirs: string[] = [];
 
@@ -57,6 +58,92 @@ describe("cli", () => {
     expect(result.code).toBe(1);
     expect(result.stdout).toContain("Status: broken");
     expect(result.stdout).toContain("Summary: 1 error");
+  });
+
+  it("scan text and JSON expose incomplete scan metadata", async () => {
+    const fixture = await createTruncatedFixture();
+    const scanOptions = { entryLimit: 1 };
+
+    const textResult = await runCli(["scan", fixture], undefined, scanOptions);
+    const jsonResult = await runCli(
+      ["scan", fixture, "--json"],
+      undefined,
+      scanOptions
+    );
+    const parsed = JSON.parse(jsonResult.stdout) as {
+      scanMetadata: {
+        entriesScanned: number;
+        entryLimit: number;
+        truncated: boolean;
+        complete: boolean;
+      };
+    };
+
+    expect(textResult.stdout).toContain("Scan completeness: incomplete");
+    expect(textResult.stdout).toContain("Entries scanned: 1 (limit: 1)");
+    expect(textResult.stdout).toContain("WARNING: Scan results are partial");
+    expect(parsed.scanMetadata).toMatchObject({
+      entriesScanned: 1,
+      entryLimit: 1,
+      truncated: true,
+      complete: false
+    });
+  });
+
+  it("doctor reports broken when the project scan is incomplete", async () => {
+    const fixture = await createTruncatedFixture();
+    await fs.writeFile(
+      path.join(fixture, "AGENTS.md"),
+      "Use existing conventions.\n",
+      "utf8"
+    );
+
+    const result = await runCli(
+      ["doctor", fixture],
+      undefined,
+      { entryLimit: 2 }
+    );
+
+    expect(result.code).toBe(1);
+    expect(result.stdout).toContain("scan is incomplete");
+    expect(result.stdout).toContain("Status: broken");
+    expect(result.stdout).not.toContain("No AGENTS.md issues found.");
+  });
+
+  it("generate is blocked when the project scan is incomplete", async () => {
+    const fixture = await createTruncatedFixture();
+
+    await expect(
+      runCli(["generate", fixture], undefined, { entryLimit: 1 })
+    ).rejects.toThrow("Cannot generate AGENTS.md: project scan is incomplete");
+  });
+
+  it("apply aborts an incomplete scan before confirmation or filesystem writes", async () => {
+    const fixture = await createTruncatedFixture();
+    const agentsPath = path.join(fixture, "AGENTS.md");
+    const previous = "manual instructions must remain\n";
+    await fs.writeFile(agentsPath, previous, "utf8");
+    let confirmationRequested = false;
+
+    await expect(
+      runCli(
+        ["apply", fixture],
+        async () => {
+          confirmationRequested = true;
+          return true;
+        },
+        { entryLimit: 2 }
+      )
+    ).rejects.toThrow("Cannot apply AGENTS.md: project scan is incomplete");
+
+    expect(confirmationRequested).toBe(false);
+    expect(await fs.readFile(agentsPath, "utf8")).toBe(previous);
+    expect(await fs.readdir(fixture)).toEqual(["AGENTS.md", "large"]);
+    expect(
+      (await fs.readdir(fixture)).some(
+        (file) => file.includes(".bak") || file.includes("adao.tmp")
+      )
+    ).toBe(false);
   });
 
   it("apply --yes creates AGENTS.md when it does not exist", async () => {
@@ -178,9 +265,17 @@ async function writeJson(filePath: string, value: unknown): Promise<void> {
   await fs.writeFile(filePath, JSON.stringify(value, null, 2), "utf8");
 }
 
+async function createTruncatedFixture(): Promise<string> {
+  const fixture = await createFixture();
+  await fs.mkdir(path.join(fixture, "large"));
+  await fs.writeFile(path.join(fixture, "large", "one.ts"), "", "utf8");
+  return fixture;
+}
+
 async function runCli(
   args: string[],
-  confirmAction?: (question: string) => Promise<boolean>
+  confirmAction?: (question: string) => Promise<boolean>,
+  scanOptions?: ScanProjectOptions
 ): Promise<CliResult> {
   const originalLog = console.log;
   const originalError = console.error;
@@ -197,7 +292,7 @@ async function runCli(
   process.exitCode = undefined;
 
   try {
-    await main(args, confirmAction);
+    await main(args, confirmAction, scanOptions);
 
     return {
       code: typeof process.exitCode === "number" ? process.exitCode : 0,

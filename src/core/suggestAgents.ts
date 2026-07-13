@@ -1,7 +1,11 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { generateAgentsContent } from "./generateAgents.js";
-import { scanProject } from "./scanProject.js";
+import {
+  assertCompleteProjectScan,
+  scanProject,
+  type ScanProjectOptions
+} from "./scanProject.js";
 import type {
   AgentsValidationResult,
   EvidenceFile,
@@ -32,9 +36,11 @@ const GROUP_EVIDENCE_PATTERNS = [
 ];
 
 export async function createSuggestResult(
-  projectPath: string
+  projectPath: string,
+  scanOptions: ScanProjectOptions = {}
 ): Promise<SuggestResult> {
-  const scan = await scanProject(projectPath);
+  const scan = await scanProject(projectPath, scanOptions);
+  assertCompleteProjectScan(scan, "create suggestion");
   const generatedAgents = generateAgentsContent(scan);
   const validationResult = await validateAgents(projectPath, { scan });
   const evidenceFiles = await selectEvidenceFiles(scan);
@@ -56,7 +62,21 @@ export async function createSuggestResult(
 }
 
 async function selectEvidenceFiles(scan: ProjectScan): Promise<EvidenceFile[]> {
-  const { files } = await listProjectPathsRecursive(scan.absolutePath);
+  const projectPaths = await listProjectPathsRecursive(
+    scan.absolutePath,
+    scan.scanMetadata.entryLimit
+  );
+
+  if (
+    projectPaths.truncated ||
+    projectPaths.unreadablePaths.some((unreadable) => unreadable.blocking)
+  ) {
+    throw new Error(
+      "Cannot create suggestion: evidence scan became incomplete while reading the project."
+    );
+  }
+
+  const { files } = projectPaths;
   const candidatePaths = selectEvidencePaths(files);
   const evidenceFiles: EvidenceFile[] = [];
   let remainingChars = MAX_EVIDENCE_CHARS;
@@ -194,7 +214,8 @@ function toPromptScan(scan: ProjectScan): Record<string, unknown> {
     importantFiles: scan.importantFiles,
     projectStructure: scan.projectStructure,
     projectOverview: scan.projectOverview,
-    projectOverviewSource: scan.projectOverviewSource
+    projectOverviewSource: scan.projectOverviewSource,
+    scanMetadata: scan.scanMetadata
   };
 }
 

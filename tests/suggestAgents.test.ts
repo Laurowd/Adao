@@ -107,6 +107,16 @@ describe("createSuggestResult", () => {
     expect(result.prompt).toContain("## Current doctor result");
     expect(result.prompt).toContain("agents-missing");
   });
+
+  it("refuses to build a prompt from a truncated scan", async () => {
+    const fixture = await createFixture();
+    await fs.mkdir(path.join(fixture, "large"));
+    await fs.writeFile(path.join(fixture, "large", "one.ts"), "", "utf8");
+
+    await expect(
+      createSuggestResult(fixture, { entryLimit: 1 })
+    ).rejects.toThrow("Cannot create suggestion: project scan is incomplete");
+  });
 });
 
 async function createFixture(): Promise<string> {

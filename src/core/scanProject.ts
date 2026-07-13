@@ -10,6 +10,7 @@ import {
 import { readPackageJson } from "./readPackageJson.js";
 import type { PackageJson, ProjectScan } from "./types.js";
 import {
+  DEFAULT_SCAN_ENTRY_LIMIT,
   listProjectPathsRecursive,
   pathExists,
   readTextIfExists,
@@ -17,7 +18,14 @@ import {
 } from "../utils/fs.js";
 import { resolveProjectPath } from "../utils/paths.js";
 
-export async function scanProject(projectPath: string): Promise<ProjectScan> {
+export interface ScanProjectOptions {
+  entryLimit?: number;
+}
+
+export async function scanProject(
+  projectPath: string,
+  options: ScanProjectOptions = {}
+): Promise<ProjectScan> {
   const absolutePath = resolveProjectPath(projectPath);
   const stat = await fs.stat(absolutePath);
 
@@ -25,7 +33,11 @@ export async function scanProject(projectPath: string): Promise<ProjectScan> {
     throw new Error(`Project path is not a directory: ${absolutePath}`);
   }
 
-  const { files, directories } = await listProjectPathsRecursive(absolutePath);
+  const projectPaths = await listProjectPathsRecursive(
+    absolutePath,
+    options.entryLimit ?? DEFAULT_SCAN_ENTRY_LIMIT
+  );
+  const { files, directories } = projectPaths;
   const packageJson = await readPackageJson(absolutePath);
   const scripts = packageJson?.scripts ?? {};
   const projectName = packageJson?.name ?? path.basename(absolutePath);
@@ -49,8 +61,57 @@ export async function scanProject(projectPath: string): Promise<ProjectScan> {
     frameworks: detectFrameworksAndTools(packageJson),
     scripts,
     importantFiles: detectImportantFiles(files),
-    projectStructure: detectProjectStructure(files, directories)
+    projectStructure: detectProjectStructure(files, directories),
+    scanMetadata: {
+      entriesScanned: projectPaths.entriesScanned,
+      entryLimit: projectPaths.entryLimit,
+      truncated: projectPaths.truncated,
+      unreadablePaths: projectPaths.unreadablePaths,
+      complete:
+        !projectPaths.truncated &&
+        !projectPaths.unreadablePaths.some((unreadable) => unreadable.blocking)
+    }
   };
+}
+
+export function assertCompleteProjectScan(
+  scan: ProjectScan,
+  operation: string
+): void {
+  if (scan.scanMetadata.complete) {
+    return;
+  }
+
+  throw new Error(
+    `Cannot ${operation}: project scan is incomplete (${formatIncompleteScanReasons(scan)}).`
+  );
+}
+
+export function formatIncompleteScanReasons(scan: ProjectScan): string {
+  const reasons: string[] = [];
+
+  if (scan.scanMetadata.truncated) {
+    reasons.push(
+      `entry limit ${scan.scanMetadata.entryLimit} reached after ${scan.scanMetadata.entriesScanned} entries`
+    );
+  }
+
+  const blockingPaths = scan.scanMetadata.unreadablePaths.filter(
+    (unreadable) => unreadable.blocking
+  );
+
+  if (blockingPaths.length > 0) {
+    reasons.push(
+      `unreadable paths: ${blockingPaths
+        .map(
+          (unreadable) =>
+            `${unreadable.path}${unreadable.code ? ` (${unreadable.code})` : ""}`
+        )
+        .join(", ")}`
+    );
+  }
+
+  return reasons.join("; ");
 }
 
 function detectProjectOverview(
