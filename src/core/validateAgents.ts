@@ -23,6 +23,11 @@ interface MentionedCommand {
   raw: string;
 }
 
+interface ContentLine {
+  text: string;
+  section: string;
+}
+
 const VAGUE_PHRASES = [
   "write clean code",
   "follow best practices",
@@ -173,6 +178,15 @@ async function validateMentionedCommands(
   const mentionedCommands = extractMentionedCommands(content);
 
   for (const command of mentionedCommands) {
+    if (scan.packageManager && command.manager !== scan.packageManager) {
+      issues.push({
+        severity: "error",
+        code: "package-manager-command-conflict",
+        message: `AGENTS.md instructs \`${command.raw}\` using ${command.manager}, but project evidence indicates ${scan.packageManager}. Use the detected package manager or update the project evidence.`
+      });
+      continue;
+    }
+
     if (!packageJson) {
       issues.push({
         severity: "warning",
@@ -182,7 +196,12 @@ async function validateMentionedCommands(
       continue;
     }
 
-    if (!scripts[command.scriptName]) {
+    const npmStartWithDefaultServer =
+      command.manager === "npm" &&
+      command.scriptName === "start" &&
+      (await pathExists(path.join(scan.absolutePath, "server.js")));
+
+    if (!scripts[command.scriptName] && !npmStartWithDefaultServer) {
       issues.push({
         severity: "error",
         code: "command-script-missing",
@@ -195,21 +214,42 @@ async function validateMentionedCommands(
 function extractMentionedCommands(content: string): MentionedCommand[] {
   const commands = new Map<string, MentionedCommand>();
 
-  collectCommands(commands, content, /\bnpm\s+run\s+([A-Za-z0-9:_-]+)/g, "npm");
-  collectCommands(commands, content, /\bnpm\s+(test|start)\b/g, "npm");
-  collectCommands(
-    commands,
-    content,
-    /\bpnpm\s+(?:run\s+)?([A-Za-z0-9:_-]+)/g,
-    "pnpm"
-  );
-  collectCommands(
-    commands,
-    content,
-    /\byarn\s+(?:run\s+)?([A-Za-z0-9:_-]+)/g,
-    "yarn"
-  );
-  collectCommands(commands, content, /\bbun\s+run\s+([A-Za-z0-9:_-]+)/g, "bun");
+  for (const line of getContentLines(content)) {
+    if (isNonAssertiveLine(line)) {
+      continue;
+    }
+
+    collectCommands(
+      commands,
+      line.text,
+      /\bnpm\s+run\s+([A-Za-z0-9:_-]+)((?:\s+--(?:[A-Za-z0-9_-]+)?|\s+--[A-Za-z0-9_-]+(?:=[^\s`]+)?)*)/g,
+      "npm"
+    );
+    collectCommands(
+      commands,
+      line.text,
+      /\bnpm\s+(test|start)\b((?:\s+--(?:[A-Za-z0-9_-]+)?|\s+--[A-Za-z0-9_-]+(?:=[^\s`]+)?)*)/g,
+      "npm"
+    );
+    collectCommands(
+      commands,
+      line.text,
+      /\bpnpm\s+(?:run\s+)?([A-Za-z0-9:_-]+)((?:\s+--(?:[A-Za-z0-9_-]+)?|\s+--[A-Za-z0-9_-]+(?:=[^\s`]+)?)*)/g,
+      "pnpm"
+    );
+    collectCommands(
+      commands,
+      line.text,
+      /\byarn\s+(?:run\s+)?([A-Za-z0-9:_-]+)((?:\s+--(?:[A-Za-z0-9_-]+)?|\s+--[A-Za-z0-9_-]+(?:=[^\s`]+)?)*)/g,
+      "yarn"
+    );
+    collectCommands(
+      commands,
+      line.text,
+      /\bbun\s+(?:run\s+)?([A-Za-z0-9:_-]+)((?:\s+--(?:[A-Za-z0-9_-]+)?|\s+--[A-Za-z0-9_-]+(?:=[^\s`]+)?)*)/g,
+      "bun"
+    );
+  }
 
   return [...commands.values()];
 }
@@ -228,7 +268,7 @@ function collectCommands(
     }
 
     const raw = match[0];
-    const key = `${manager}:${scriptName}:${raw}`;
+    const key = `${manager}:${scriptName}`;
 
     commands.set(key, { manager, scriptName, raw });
   }
@@ -318,15 +358,90 @@ async function validateMentionedStack(
     }
   ];
 
+  const lines = getContentLines(content);
+
   for (const rule of stackRules) {
-    if (rule.pattern.test(content) && !(await rule.exists())) {
+    const declaration = lines.find(
+      (line) =>
+        !isNonAssertiveLine(line) &&
+        rule.pattern.test(line.text) &&
+        isStackDeclaration(line, rule.pattern)
+    );
+
+    if (declaration && !(await rule.exists())) {
       issues.push({
         severity: "warning",
         code: "stack-not-detected",
-        message: `AGENTS.md mentions ${rule.label}, but it was not detected in this project.`
+        message: `AGENTS.md line "${declaration.text.trim()}" appears to declare ${rule.label}, but it was not detected in this project.`
       });
     }
   }
+}
+
+function getContentLines(content: string): ContentLine[] {
+  const lines: ContentLine[] = [];
+  let section = "";
+
+  for (const text of content.replace(/\r\n/g, "\n").split("\n")) {
+    const heading = text.trim().match(/^#{1,6}\s+(.+?)\s*#*$/)?.[1];
+
+    if (heading) {
+      section = heading.toLowerCase();
+    }
+
+    lines.push({ text, section });
+  }
+
+  return lines;
+}
+
+function isNonAssertiveLine(line: ContentLine): boolean {
+  const normalized = line.text
+    .trim()
+    .replace(/^(?:[-*+]|\d+\.)\s+/, "")
+    .replace(/^>\s*/, "")
+    .replace(/^`+/, "")
+    .trim();
+
+  return (
+    /^(?:please\s+)?(?:do\s+not|don't|never|avoid)\b/i.test(normalized) ||
+    /^(?:you\s+)?(?:must|should)\s+not\b/i.test(normalized) ||
+    /\b(?:does|do|is|are)\s+not\b/i.test(normalized) ||
+    /^(?:example|examples|e\.g\.|for example|hypothetical(?:ly)?)\s*[:,-]/i.test(
+      normalized
+    ) ||
+    /\b(?:for example|as an example|hypothetical(?:ly)?)\b/i.test(normalized) ||
+    /^examples?$/.test(line.section)
+  );
+}
+
+function isStackDeclaration(line: ContentLine, stackPattern: RegExp): boolean {
+  if (isStackSection(line.section) && /^\s*(?:[-*+]\s+)?`?[^#]/.test(line.text)) {
+    return true;
+  }
+
+  const stackMatch = line.text.match(stackPattern);
+
+  if (!stackMatch || stackMatch.index === undefined) {
+    return false;
+  }
+
+  const beforeStack = line.text.slice(0, stackMatch.index);
+  return (
+    /\b(?:this|the)\s+(?:project|application|app|frontend|backend)\s+(?:uses?|includes?|depends\s+on|is\s+(?:built|written|powered)\s+(?:with|by|in))\b/i.test(
+      beforeStack
+    ) ||
+    /\b(?:uses?|depends\s+on|built\s+with|powered\s+by)\b/i.test(beforeStack) ||
+    /\b(?:frameworks?|tech\s+stack|stack|dependencies|devdependencies|language|runtime|tests?)\s*(?::|includes?\b)/i.test(
+      beforeStack
+    )
+  );
+}
+
+function isStackSection(section: string): boolean {
+  return /^(?:tech(?:nology)?\s+stack|stack|frameworks?|dependencies|development dependencies|languages?|runtime|tests?)$/i.test(
+    section.trim()
+  );
 }
 
 async function validateFreshness(
@@ -345,12 +460,7 @@ async function validateFreshness(
   for (const relativeFile of [
     "package.json",
     "README.md",
-    "readme.md",
-    "pnpm-lock.yaml",
-    "package-lock.json",
-    "yarn.lock",
-    "bun.lockb",
-    "bun.lock"
+    "readme.md"
   ]) {
     const fileStat = await statIfExists(path.join(scan.absolutePath, relativeFile));
 

@@ -198,6 +198,35 @@ describe("cli", () => {
     expect(result.code).toBe(1);
     expect(result.stdout).toContain("Status: broken");
     expect(result.stdout).toContain("Summary: 1 error");
+    expect(result.stdout).toContain("npm run build");
+    expect(result.stderr).toBe("");
+  });
+
+  it("doctor --json preserves issue codes, summary, and broken exit status", async () => {
+    const fixture = await createFixture();
+    await writeJson(path.join(fixture, "package.json"), {
+      scripts: { test: "vitest run" }
+    });
+    await fs.writeFile(
+      path.join(fixture, "AGENTS.md"),
+      "Run npm run build before finishing.",
+      "utf8"
+    );
+
+    const result = await runCli(["doctor", "--json", fixture]);
+    const parsed = JSON.parse(result.stdout) as {
+      issues: Array<{ code: string }>;
+      summary: { errors: number; warnings: number; infos: number };
+      status: string;
+    };
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toBe("");
+    expect(parsed.issues).toEqual([
+      expect.objectContaining({ code: "command-script-missing" })
+    ]);
+    expect(parsed.summary).toEqual({ errors: 1, warnings: 0, infos: 0 });
+    expect(parsed.status).toBe("broken");
   });
 
   it.each(["scan", "doctor", "generate", "suggest"])(
