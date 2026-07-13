@@ -22,6 +22,146 @@ describe("cli", () => {
     );
   });
 
+  it.each(["--help", "-h"])("prints global help for %s", async (flag) => {
+    const result = await runCli([flag]);
+
+    expect(result).toMatchObject({ code: 0, stderr: "" });
+    expect(result.stdout).toContain("adao scan <projectPath> [--json]");
+    expect(result.stdout).toContain("adao doctor <projectPath> [--json]");
+    expect(result.stdout).toContain("adao generate <projectPath>");
+    expect(result.stdout).toContain("adao suggest <projectPath> [--json]");
+    expect(result.stdout).toContain("adao apply <projectPath> [--yes]");
+  });
+
+  it.each([
+    ["scan", "--json"],
+    ["doctor", "--json"],
+    ["generate", undefined],
+    ["suggest", "--json"],
+    ["apply", "--yes"]
+  ] as const)("prints filesystem-free help for %s", async (command, flag) => {
+    const result = await runCli([command, "--help"]);
+
+    expect(result).toMatchObject({ code: 0, stderr: "" });
+    expect(result.stdout).toContain(`Usage: adao ${command} <projectPath>`);
+    expect(result.stdout).toContain("Example:");
+    if (flag) {
+      expect(result.stdout).toContain(flag);
+    }
+  });
+
+  it.each(["--version", "-V"])("prints package version for %s", async (flag) => {
+    const packageJson = JSON.parse(
+      await fs.readFile(path.join(process.cwd(), "package.json"), "utf8")
+    ) as { version: string };
+    const result = await runCli([flag]);
+
+    expect(result).toEqual({
+      code: 0,
+      stdout: `${packageJson.version}\n`,
+      stderr: ""
+    });
+  });
+
+  it("reports an unknown command as a textual usage error", async () => {
+    const result = await runCli(["scna", "."]);
+
+    expect(result.code).toBe(2);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("Usage error: Unknown command 'scna'");
+  });
+
+  it.each([
+    [["scan"], "Missing projectPath"],
+    [["scan", "one", "two"], "exactly one projectPath"],
+    [["scan", ".", "--josn"], "Unknown flag '--josn'"],
+    [["scan", ".", "--json", "--json"], "Duplicate flag '--json'"],
+    [["generate", ".", "--json"], "Unknown flag '--json'"],
+    [["doctor", ".", "--yes"], "Unknown flag '--yes'"]
+  ] as const)("rejects invalid usage without stdout: %j", async (args, message) => {
+    const result = await runCli([...args]);
+
+    expect(result.code).toBe(2);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain(message);
+  });
+
+  it("returns a JSON usage error when valid --json mode was recognized", async () => {
+    const result = await runCli(["scan", "--json", ".", "extra"]);
+
+    expect(result.code).toBe(2);
+    expect(result.stdout).toBe("");
+    expect(JSON.parse(result.stderr)).toEqual({
+      error: {
+        type: "usage",
+        message: "Command 'scan' accepts exactly one projectPath; received 2."
+      }
+    });
+  });
+
+  it("does not treat misspelled --josn as JSON mode", async () => {
+    const result = await runCli(["scan", ".", "--josn"]);
+
+    expect(result.code).toBe(2);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("Usage error:");
+    expect(() => JSON.parse(result.stderr)).toThrow();
+  });
+
+  it("returns textual operational errors only on stderr", async () => {
+    const missing = path.join(os.tmpdir(), `adao-missing-${Date.now()}`);
+    const result = await runCli(["scan", missing]);
+
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("Error:");
+  });
+
+  it("returns operational errors as JSON only on stderr in JSON mode", async () => {
+    const fixture = await createFixture();
+    await fs.writeFile(path.join(fixture, "package.json"), "{", "utf8");
+    const result = await runCli(["scan", "--json", fixture]);
+    const parsed = JSON.parse(result.stderr) as {
+      error: { type: string; message: string };
+    };
+
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(parsed.error.type).toBe("operational");
+    expect(parsed.error.message).toContain("package.json");
+  });
+
+  it.each([
+    ["missing path", ["apply"]],
+    ["two paths", ["apply", "one", "two"]],
+    ["unknown flag", ["apply", ".", "--force"]],
+    ["duplicate --yes", ["apply", ".", "--yes", "--yes"]],
+    ["unsupported --json", ["apply", ".", "--json"]],
+    ["unknown command", ["aply", "."]]
+  ] as const)("invalid apply-like input (%s) performs no writes", async (_name, args) => {
+    const fixture = await createFixture();
+    const agentsPath = path.join(fixture, "AGENTS.md");
+    const previous = "manual content\n";
+    await fs.writeFile(agentsPath, previous, "utf8");
+    let confirmationRequested = false;
+    const concreteArgs = args.map((arg) => (arg === "." ? fixture : arg));
+
+    const result = await runCli(concreteArgs, async () => {
+      confirmationRequested = true;
+      return true;
+    });
+
+    expect(result.code).toBe(2);
+    expect(result.stdout).toBe("");
+    expect(confirmationRequested).toBe(false);
+    expect(await fs.readFile(agentsPath, "utf8")).toBe(previous);
+    expect(
+      (await fs.readdir(fixture)).some(
+        (file) => file.includes(".bak") || file.includes("adao.tmp")
+      )
+    ).toBe(false);
+  });
+
   it("doctor --json returns structured JSON", async () => {
     const fixture = await createFixture();
     const result = await runCli(["doctor", fixture, "--json"]);
@@ -67,7 +207,11 @@ describe("cli", () => {
       const packageJsonPath = path.join(fixture, "package.json");
       await fs.writeFile(packageJsonPath, '{"scripts": {', "utf8");
 
-      await expect(runCli([command, fixture])).rejects.toThrow(
+      const result = await runCli([command, fixture]);
+
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toContain(
         `package.json at ${packageJsonPath} contains malformed JSON`
       );
     }
@@ -92,9 +236,9 @@ describe("cli", () => {
     );
     expect(parsed.packageManager).toBeNull();
     expect(parsed.packageManagerEvidence.conflict).toBe(true);
-    await expect(runCli(["generate", fixture])).rejects.toThrow(
-      "package manager conflict"
-    );
+    const generateResult = await runCli(["generate", fixture]);
+    expect(generateResult.code).toBe(1);
+    expect(generateResult.stderr).toContain("package manager conflict");
   });
 
   it("generate rejects an unrecognized packageManager without lockfile evidence", async () => {
@@ -105,7 +249,9 @@ describe("cli", () => {
       scripts: { test: "vitest run" }
     });
 
-    await expect(runCli(["generate", fixture])).rejects.toThrow(
+    const result = await runCli(["generate", fixture]);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain(
       `package.json at ${packageJsonPath} declares unrecognized packageManager value`
     );
   });
@@ -118,13 +264,13 @@ describe("cli", () => {
     await fs.writeFile(path.join(fixture, "package.json"), "{", "utf8");
     let confirmationRequested = false;
 
-    await expect(
-      runCli(["apply", fixture], async () => {
-        confirmationRequested = true;
-        return true;
-      })
-    ).rejects.toThrow("package.json");
+    const result = await runCli(["apply", fixture], async () => {
+      confirmationRequested = true;
+      return true;
+    });
 
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("package.json");
     expect(confirmationRequested).toBe(false);
     expect(await fs.readFile(agentsPath, "utf8")).toBe(previous);
     expect(
@@ -145,13 +291,13 @@ describe("cli", () => {
     });
     let confirmationRequested = false;
 
-    await expect(
-      runCli(["apply", fixture], async () => {
-        confirmationRequested = true;
-        return true;
-      })
-    ).rejects.toThrow("package manager conflict");
+    const result = await runCli(["apply", fixture], async () => {
+      confirmationRequested = true;
+      return true;
+    });
 
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("package manager conflict");
     expect(confirmationRequested).toBe(false);
     expect(await fs.readFile(agentsPath, "utf8")).toBe(previous);
     expect(
@@ -214,9 +360,16 @@ describe("cli", () => {
   it("generate is blocked when the project scan is incomplete", async () => {
     const fixture = await createTruncatedFixture();
 
-    await expect(
-      runCli(["generate", fixture], undefined, { entryLimit: 1 })
-    ).rejects.toThrow("Cannot generate AGENTS.md: project scan is incomplete");
+    const result = await runCli(
+      ["generate", fixture],
+      undefined,
+      { entryLimit: 1 }
+    );
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain(
+      "Cannot generate AGENTS.md: project scan is incomplete"
+    );
   });
 
   it("apply aborts an incomplete scan before confirmation or filesystem writes", async () => {
@@ -226,17 +379,19 @@ describe("cli", () => {
     await fs.writeFile(agentsPath, previous, "utf8");
     let confirmationRequested = false;
 
-    await expect(
-      runCli(
-        ["apply", fixture],
-        async () => {
-          confirmationRequested = true;
-          return true;
-        },
-        { entryLimit: 2 }
-      )
-    ).rejects.toThrow("Cannot apply AGENTS.md: project scan is incomplete");
+    const result = await runCli(
+      ["apply", fixture],
+      async () => {
+        confirmationRequested = true;
+        return true;
+      },
+      { entryLimit: 2 }
+    );
 
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain(
+      "Cannot apply AGENTS.md: project scan is incomplete"
+    );
     expect(confirmationRequested).toBe(false);
     expect(await fs.readFile(agentsPath, "utf8")).toBe(previous);
     expect(await fs.readdir(fixture)).toEqual(["AGENTS.md", "large"]);
@@ -319,13 +474,13 @@ describe("cli", () => {
     const concurrent = "changed while preview was visible\n";
     await fs.writeFile(agentsPath, previous, "utf8");
 
-    await expect(
-      runCli(["apply", fixture], async () => {
-        await fs.writeFile(agentsPath, concurrent, "utf8");
-        return true;
-      })
-    ).rejects.toThrow("changed after the preview");
+    const result = await runCli(["apply", fixture], async () => {
+      await fs.writeFile(agentsPath, concurrent, "utf8");
+      return true;
+    });
 
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("changed after the preview");
     expect(await fs.readFile(agentsPath, "utf8")).toBe(concurrent);
     await expect(fs.access(`${agentsPath}.bak`)).rejects.toMatchObject({
       code: "ENOENT"

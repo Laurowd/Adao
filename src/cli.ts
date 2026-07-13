@@ -4,6 +4,13 @@ import { stdin as input, stdout as output } from "node:process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  CliUsageError,
+  parseCliArgs,
+  recognizesJsonErrorMode,
+  type CommandName,
+  type ParsedCliInput
+} from "./cliArgs.js";
+import {
   commitAgentsUpdate,
   prepareAgentsUpdate,
   readAgentsContent
@@ -21,6 +28,7 @@ import {
 import { createSuggestResult } from "./core/suggestAgents.js";
 import type { AgentsValidationResult, ProjectScan } from "./core/types.js";
 import { validateAgents } from "./core/validateAgents.js";
+import { readCliVersion } from "./packageVersion.js";
 
 type ConfirmAction = (question: string) => Promise<boolean>;
 
@@ -29,47 +37,38 @@ export async function main(
   confirmAction: ConfirmAction = askConfirmation,
   scanOptions: ScanProjectOptions = {}
 ): Promise<void> {
-  const command = argv[0];
+  const jsonErrorMode = recognizesJsonErrorMode(argv);
+  let parsed: ParsedCliInput;
 
-  if (!command || command === "--help" || command === "-h") {
-    printUsage();
+  try {
+    parsed = parseCliArgs(argv);
+  } catch (error: unknown) {
+    reportCliError("usage", error, jsonErrorMode);
+    process.exitCode = 2;
     return;
   }
 
-  if (command === "scan") {
-    await runScan(argv.slice(1), scanOptions);
-    return;
+  try {
+    if (parsed.kind === "global-help") {
+      printGlobalHelp();
+    } else if (parsed.kind === "version") {
+      console.log(await readCliVersion());
+    } else if (parsed.kind === "command-help") {
+      printCommandHelp(parsed.command);
+    } else {
+      await runCommand(parsed, confirmAction, scanOptions);
+    }
+  } catch (error: unknown) {
+    reportCliError("operational", error, parsed.kind === "command" && parsed.json);
+    process.exitCode = 1;
   }
-
-  if (command === "doctor") {
-    await runDoctor(argv.slice(1), scanOptions);
-    return;
-  }
-
-  if (command === "generate") {
-    await runGenerate(argv.slice(1), scanOptions);
-    return;
-  }
-
-  if (command === "apply") {
-    await runApply(argv.slice(1), confirmAction, scanOptions);
-    return;
-  }
-
-  if (command === "suggest") {
-    await runSuggest(argv.slice(1), scanOptions);
-    return;
-  }
-
-  throw new Error(`Unknown command: ${command}`);
 }
 
 async function runScan(
-  args: string[],
+  projectPath: string,
+  asJson: boolean,
   scanOptions: ScanProjectOptions
 ): Promise<void> {
-  const projectPath = getProjectPath(args);
-  const asJson = args.includes("--json");
   const scan = await scanProject(projectPath, scanOptions);
 
   if (asJson) {
@@ -81,11 +80,10 @@ async function runScan(
 }
 
 async function runDoctor(
-  args: string[],
+  projectPath: string,
+  asJson: boolean,
   scanOptions: ScanProjectOptions
 ): Promise<void> {
-  const projectPath = getProjectPath(args);
-  const asJson = args.includes("--json");
   const scan = await scanProject(projectPath, scanOptions);
   const result = await validateAgents(projectPath, { scan });
 
@@ -111,22 +109,20 @@ async function runDoctor(
 }
 
 async function runGenerate(
-  args: string[],
+  projectPath: string,
   scanOptions: ScanProjectOptions
 ): Promise<void> {
-  const projectPath = getProjectPath(args);
   const scan = await scanProject(projectPath, scanOptions);
 
   console.log(generateAgentsContent(scan));
 }
 
 async function runApply(
-  args: string[],
+  projectPath: string,
+  assumeYes: boolean,
   confirmAction: ConfirmAction,
   scanOptions: ScanProjectOptions
 ): Promise<void> {
-  const projectPath = getProjectPath(args);
-  const assumeYes = args.includes("--yes");
   const scan = await scanProject(projectPath, scanOptions);
   assertCompleteProjectScan(scan, "apply AGENTS.md");
   assertNoPackageManagerConflict(scan, "apply AGENTS.md");
@@ -187,11 +183,10 @@ async function runApply(
 }
 
 async function runSuggest(
-  args: string[],
+  projectPath: string,
+  asJson: boolean,
   scanOptions: ScanProjectOptions
 ): Promise<void> {
-  const projectPath = getProjectPath(args);
-  const asJson = args.includes("--json");
   const result = await createSuggestResult(projectPath, scanOptions);
 
   if (asJson) {
@@ -202,14 +197,27 @@ async function runSuggest(
   console.log(result.prompt);
 }
 
-function getProjectPath(args: string[]): string {
-  const projectPath = args.find((arg) => !arg.startsWith("-"));
-
-  if (!projectPath) {
-    throw new Error("Missing projectPath.");
+async function runCommand(
+  parsed: Extract<ParsedCliInput, { kind: "command" }>,
+  confirmAction: ConfirmAction,
+  scanOptions: ScanProjectOptions
+): Promise<void> {
+  switch (parsed.command) {
+    case "scan":
+      await runScan(parsed.projectPath, parsed.json, scanOptions);
+      return;
+    case "doctor":
+      await runDoctor(parsed.projectPath, parsed.json, scanOptions);
+      return;
+    case "generate":
+      await runGenerate(parsed.projectPath, scanOptions);
+      return;
+    case "suggest":
+      await runSuggest(parsed.projectPath, parsed.json, scanOptions);
+      return;
+    case "apply":
+      await runApply(parsed.projectPath, parsed.yes, confirmAction, scanOptions);
   }
-
-  return projectPath;
 }
 
 function formatScan(scan: ProjectScan): string {
@@ -320,27 +328,109 @@ async function askConfirmation(question: string): Promise<boolean> {
   return /^(y|yes)$/i.test(answer.trim());
 }
 
-function printUsage(): void {
-  console.log(`Usage:
+function printGlobalHelp(): void {
+  console.log(`Adão maintains reliable AGENTS.md files from local project evidence.
+
+Usage:
+  adao <command> <projectPath> [flags]
+  adao --help
+  adao --version
+
+Commands:
   adao scan <projectPath> [--json]
-  adao doctor <projectPath>
+      Scan project structure and detected Node.js/TypeScript evidence.
+  adao doctor <projectPath> [--json]
+      Validate the existing AGENTS.md.
   adao generate <projectPath>
-  adao apply <projectPath>
+      Print deterministic suggested AGENTS.md content.
   adao suggest <projectPath> [--json]
+      Build a deterministic suggestion prompt from local evidence.
+  adao apply <projectPath> [--yes]
+      Preview and optionally apply the suggested AGENTS.md.
+
+Global flags:
+  --help, -h       Show global or command help.
+  --version, -V    Show the Adão version.
 
 Examples:
-  npm run dev -- scan .
-  npm run dev -- doctor .
-  npm run dev -- generate .
-  npm run dev -- suggest .`);
+  adao scan . --json
+  adao apply . --yes`);
+}
+
+function printCommandHelp(command: CommandName): void {
+  const help: Record<CommandName, string> = {
+    scan: `Usage: adao scan <projectPath> [--json]
+
+Scan project structure and detected Node.js/TypeScript evidence.
+
+Flags:
+  --json       Print the scan as JSON.
+  --help, -h   Show this help.
+
+Example:
+  adao scan . --json`,
+    doctor: `Usage: adao doctor <projectPath> [--json]
+
+Validate the existing AGENTS.md against detected project evidence.
+
+Flags:
+  --json       Print the validation result as JSON.
+  --help, -h   Show this help.
+
+Example:
+  adao doctor . --json`,
+    generate: `Usage: adao generate <projectPath>
+
+Print deterministic suggested AGENTS.md content without writing files.
+
+Flags:
+  --help, -h   Show this help.
+
+Example:
+  adao generate .`,
+    suggest: `Usage: adao suggest <projectPath> [--json]
+
+Build a deterministic suggestion prompt from local project evidence.
+
+Flags:
+  --json       Print the suggestion result as JSON.
+  --help, -h   Show this help.
+
+Example:
+  adao suggest . --json`,
+    apply: `Usage: adao apply <projectPath> [--yes]
+
+Preview and optionally apply the suggested AGENTS.md safely.
+
+Flags:
+  --yes        Apply without interactive confirmation.
+  --help, -h   Show this help.
+
+Example:
+  adao apply . --yes`
+  };
+
+  console.log(help[command]);
+}
+
+function reportCliError(
+  type: "usage" | "operational",
+  error: unknown,
+  asJson: boolean
+): void {
+  const message = error instanceof Error ? error.message : String(error);
+
+  if (asJson) {
+    console.error(JSON.stringify({ error: { type, message } }));
+    return;
+  }
+
+  const label = error instanceof CliUsageError ? "Usage error" : "Error";
+  console.error(`${label}: ${message}`);
 }
 
 if (isDirectRun()) {
-  main().catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`Error: ${message}`);
-    process.exitCode = 1;
-  });
+  void main();
 }
 
 function isDirectRun(): boolean {
