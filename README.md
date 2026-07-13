@@ -1,5 +1,7 @@
 # Adao
 
+[![CI status](https://github.com/Laurowd/Adao/actions/workflows/ci.yml/badge.svg)](https://github.com/Laurowd/Adao/actions/workflows/ci.yml)
+
 Adao is a local CLI productivity tool for projects that use code agents. It scans a project, checks whether `AGENTS.md` still matches the codebase, and can generate a short suggested replacement.
 
 The MVP does not use an external API, LLM, database, authentication, Tauri, or a graphical UI. It is focused on a small, testable core that a future UI can reuse.
