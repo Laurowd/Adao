@@ -1,18 +1,26 @@
 #!/usr/bin/env node
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
-import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  commitAgentsUpdate,
+  prepareAgentsUpdate,
+  readAgentsContent
+} from "./core/applyAgents.js";
 import { diffAgents } from "./core/diffAgents.js";
 import { generateAgentsContent } from "./core/generateAgents.js";
 import { scanProject } from "./core/scanProject.js";
 import { createSuggestResult } from "./core/suggestAgents.js";
 import type { AgentsValidationResult, ProjectScan } from "./core/types.js";
 import { validateAgents } from "./core/validateAgents.js";
-import { readTextIfExists } from "./utils/fs.js";
 
-export async function main(argv = process.argv.slice(2)): Promise<void> {
+type ConfirmAction = (question: string) => Promise<boolean>;
+
+export async function main(
+  argv = process.argv.slice(2),
+  confirmAction: ConfirmAction = askConfirmation
+): Promise<void> {
   const command = argv[0];
 
   if (!command || command === "--help" || command === "-h") {
@@ -36,7 +44,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   }
 
   if (command === "apply") {
-    await runApply(argv.slice(1));
+    await runApply(argv.slice(1), confirmAction);
     return;
   }
 
@@ -94,37 +102,47 @@ async function runGenerate(args: string[]): Promise<void> {
   console.log(generateAgentsContent(scan));
 }
 
-async function runApply(args: string[]): Promise<void> {
+async function runApply(
+  args: string[],
+  confirmAction: ConfirmAction
+): Promise<void> {
   const projectPath = getProjectPath(args);
   const assumeYes = args.includes("--yes");
   const scan = await scanProject(projectPath);
   const agentsPath = path.join(scan.absolutePath, "AGENTS.md");
-  const oldContent = await readTextIfExists(agentsPath);
-  const newContent = generateAgentsContent(scan);
+  const oldContent = await readAgentsContent(agentsPath);
+  const update = prepareAgentsUpdate(oldContent, generateAgentsContent(scan));
 
   if (oldContent !== null) {
-    if (oldContent === newContent) {
+    if (oldContent === update.nextContent) {
       console.log("AGENTS.md is already up to date.");
       return;
     }
 
-    console.log(diffAgents(oldContent, newContent));
+    console.log(diffAgents(oldContent, update.nextContent));
   } else {
     console.log("AGENTS.md does not exist. Proposed content:");
     console.log("");
-    console.log(newContent);
+    console.log(update.nextContent);
   }
 
-  const action = oldContent === null ? "create" : "overwrite";
-  console.log(
-    oldContent === null
-      ? `Will create ${agentsPath}.`
-      : `Will overwrite ${agentsPath} and write backup to ${agentsPath}.bak.`
-  );
+  if (update.kind === "create") {
+    console.log(`Will create ${agentsPath}.`);
+  } else if (update.kind === "managed") {
+    console.log(
+      `Will update only content between Adão markers in ${agentsPath} and create an available backup.`
+    );
+  } else {
+    console.log(
+      `Legacy AGENTS.md has no Adão markers. The entire file will be replaced; manual content will not be preserved in AGENTS.md. A backup will be created first.`
+    );
+  }
+
+  const action = update.kind === "create" ? "create" : "update";
 
   const confirmed =
     assumeYes ||
-    (await askConfirmation(
+    (await confirmAction(
       `${capitalize(action)} suggested AGENTS.md at ${agentsPath}?`
     ));
 
@@ -137,12 +155,12 @@ async function runApply(args: string[]): Promise<void> {
     console.log(`--yes supplied; proceeding to ${action} AGENTS.md.`);
   }
 
-  if (oldContent !== null) {
-    await fs.copyFile(agentsPath, `${agentsPath}.bak`);
-    console.log(`Backup written to ${agentsPath}.bak`);
+  const result = await commitAgentsUpdate(agentsPath, update);
+
+  if (result.backupPath) {
+    console.log(`Backup written to ${result.backupPath}`);
   }
 
-  await fs.writeFile(agentsPath, newContent, "utf8");
   console.log(`Updated ${agentsPath}`);
 }
 

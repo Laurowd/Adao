@@ -73,6 +73,8 @@ describe("cli", () => {
 
     expect(result.code).toBe(0);
     expect(result.stdout).toContain("--yes supplied");
+    expect(agentsContent).toContain("<!-- adao:start -->");
+    expect(agentsContent).toContain("<!-- adao:end -->");
     expect(agentsContent).toContain("A fixture project.");
   });
 
@@ -99,9 +101,47 @@ describe("cli", () => {
     const newContent = await fs.readFile(agentsPath, "utf8");
 
     expect(result.code).toBe(0);
+    expect(result.stdout).toContain("Legacy AGENTS.md has no Adão markers");
+    expect(result.stdout).toContain("manual content will not be preserved");
     expect(result.stdout).toContain("Backup written");
     expect(backupContent).toBe("old instructions\n");
     expect(newContent).toContain("Updated instructions.");
+  });
+
+  it("apply aborts before writing when confirmation is declined", async () => {
+    const fixture = await createFixture();
+    const agentsPath = path.join(fixture, "AGENTS.md");
+    const previous = "manual legacy instructions\n";
+    await fs.writeFile(agentsPath, previous, "utf8");
+
+    const result = await runCli(["apply", fixture], async () => false);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("Aborted.");
+    expect(await fs.readFile(agentsPath, "utf8")).toBe(previous);
+    await expect(fs.access(`${agentsPath}.bak`)).rejects.toMatchObject({
+      code: "ENOENT"
+    });
+  });
+
+  it("apply aborts when AGENTS.md changes while awaiting confirmation", async () => {
+    const fixture = await createFixture();
+    const agentsPath = path.join(fixture, "AGENTS.md");
+    const previous = "manual legacy instructions\n";
+    const concurrent = "changed while preview was visible\n";
+    await fs.writeFile(agentsPath, previous, "utf8");
+
+    await expect(
+      runCli(["apply", fixture], async () => {
+        await fs.writeFile(agentsPath, concurrent, "utf8");
+        return true;
+      })
+    ).rejects.toThrow("changed after the preview");
+
+    expect(await fs.readFile(agentsPath, "utf8")).toBe(concurrent);
+    await expect(fs.access(`${agentsPath}.bak`)).rejects.toMatchObject({
+      code: "ENOENT"
+    });
   });
 
   it("suggest --json returns structured JSON", async () => {
@@ -138,7 +178,10 @@ async function writeJson(filePath: string, value: unknown): Promise<void> {
   await fs.writeFile(filePath, JSON.stringify(value, null, 2), "utf8");
 }
 
-async function runCli(args: string[]): Promise<CliResult> {
+async function runCli(
+  args: string[],
+  confirmAction?: (question: string) => Promise<boolean>
+): Promise<CliResult> {
   const originalLog = console.log;
   const originalError = console.error;
   const originalExitCode = process.exitCode;
@@ -154,7 +197,7 @@ async function runCli(args: string[]): Promise<CliResult> {
   process.exitCode = undefined;
 
   try {
-    await main(args);
+    await main(args, confirmAction);
 
     return {
       code: typeof process.exitCode === "number" ? process.exitCode : 0,

@@ -1,4 +1,5 @@
 import type { PackageManager, ProjectScan } from "./types.js";
+import { wrapManagedAgentsContent } from "./applyAgents.js";
 
 const COMMAND_DESCRIPTIONS: Record<string, string> = {
   dev: "Start development server",
@@ -50,7 +51,7 @@ export function generateAgentsContent(scan: ProjectScan): string {
         ]
       : [];
 
-  return [
+  const content = [
     "# AGENTS.md",
     "",
     "## Project overview",
@@ -79,6 +80,8 @@ export function generateAgentsContent(scan: ProjectScan): string {
     "- Update this file when project commands or architecture change.",
     ""
   ].join("\n");
+
+  return wrapManagedAgentsContent(content);
 }
 
 function buildProjectOverview(scan: ProjectScan): string {

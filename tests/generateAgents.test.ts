@@ -38,6 +38,8 @@ describe("generateAgentsContent", () => {
     const scan = await scanProject(fixture);
     const content = generateAgentsContent(scan);
 
+    expect(content.startsWith("<!-- adao:start -->\n")).toBe(true);
+    expect(content.endsWith("<!-- adao:end -->\n")).toBe(true);
     expect(content).toContain("# AGENTS.md");
     expect(content).toContain("Package manager: pnpm");
     expect(content).toContain("`pnpm dev`: Start development server");
