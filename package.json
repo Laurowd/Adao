@@ -21,7 +21,8 @@
   "type": "module",
   "files": [
     "dist/",
-    "README.md"
+    "README.md",
+    "README.pt-BR.md"
   ],
   "bin": {
     "adao": "dist/cli.js"
