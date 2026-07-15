@@ -1,160 +1,341 @@
-# Adao
+# Adão
 
 [![CI status](https://github.com/Laurowd/Adao/actions/workflows/ci.yml/badge.svg)](https://github.com/Laurowd/Adao/actions/workflows/ci.yml)
+[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Adao is a local CLI productivity tool for projects that use code agents. It scans a project, checks whether `AGENTS.md` still matches the codebase, and can generate a short suggested replacement.
+English | [Português](README.pt-BR.md)
 
-The MVP does not use an external API, LLM, database, authentication, Tauri, or a graphical UI. It is focused on a small, testable core that a future UI can reuse.
+Adão is a local-first CLI for projects that use `AGENTS.md`. It scans a
+project, audits whether its instructions still match local evidence, generates
+deterministic context, prepares a structured prompt for a separate AI review,
+and safely applies managed updates.
 
-## Why it exists
+## Why Adão exists
 
-AI coding agents depend on reliable project context. A stale, vague, or oversized `AGENTS.md` can make the agent follow the wrong commands or waste context window budget. Adao acts as a local "Context Doctor" for that file.
+Coding agents rely on accurate project instructions. An outdated, vague, or
+oversized `AGENTS.md` can point to missing commands, describe the wrong stack,
+or consume context without helping.
 
-## Install
+Adão turns evidence already present in a repository into a repeatable workflow:
+inspect the project, diagnose suspicious instructions, generate a conservative
+baseline, optionally prepare that evidence for external AI review, and update
+only the content Adão manages when markers are present.
 
-The `0.1.0` package is prepared for npm but has not been published yet. After
-publication, it can be installed or executed with:
+## Quick start
+
+Adão requires Node.js 18 or later. The package is prepared as
+`@laurowd/adao`, but it has **not been published to npm yet**. To use the
+current version from a checkout:
+
+```bash
+git clone https://github.com/Laurowd/Adao.git
+cd Adao
+npm ci
+npm run build
+node dist/cli.js --help
+```
+
+The planned commands below apply only **after the package is published**:
 
 ```bash
 npm install -g @laurowd/adao
 npx @laurowd/adao --help
 ```
 
-For local development from a checkout:
+The five project commands cover distinct parts of the workflow:
 
-```bash
-npm install
-npm run build
-node dist/cli.js --help
-```
+| Command | Purpose |
+| --- | --- |
+| `scan` | Inventory project evidence such as languages, scripts, tools, and structure. |
+| `doctor` | Check whether the current `AGENTS.md` is still consistent with detected evidence. |
+| `generate` | Print a deterministic `AGENTS.md` baseline derived from local evidence. |
+| `suggest` | Build a structured prompt for a separate review by Codex, ChatGPT, or another AI. |
+| `apply` | Preview and safely write the generated managed content. |
 
-## Develop
+From a development checkout:
 
 ```bash
 npm run dev -- scan .
 npm run dev -- doctor .
 npm run dev -- generate .
 npm run dev -- suggest .
-```
-
-Build and test:
-
-```bash
-npm run build
-npm test
-npm run test:package
-```
-
-After building, the CLI entry is available at `dist/cli.js`. The package also exposes the `adao` binary when installed as a package.
-
-## Commands
-
-### scan
-
-Analyze a project directory.
-
-```bash
-npm run dev -- scan .
-npm run dev -- scan . --json
-```
-
-Example output:
-
-```text
-Project: adao
-Path: /path/to/adao
-Git repository: no
-AGENTS.md: no
-README.md: yes
-Package manager: npm
-Languages: TypeScript
-Frameworks/tools: Vitest
-Project structure: src/, tests/
-Scripts:
-  dev: node --import tsx src/cli.ts
-  build: tsc -p tsconfig.json
-  test: vitest run
-Important files: package.json, tsconfig.json
-```
-
-### doctor
-
-Validate `AGENTS.md` and report `error`, `warning`, and `info` issues.
-
-```bash
-npm run dev -- doctor .
-```
-
-Checks include:
-
-- missing `AGENTS.md`
-- commands in `AGENTS.md` that do not exist in `package.json`
-- mentioned stack that was not detected in the project
-- files over 4000 or 8000 characters
-- vague phrases such as "write clean code"
-- `AGENTS.md` older than `package.json`, lockfiles, or `README.md`
-- simple conflict with `~/.codex/AGENTS.md` package manager guidance
-
-### generate
-
-Print a suggested `AGENTS.md` without writing to disk.
-
-```bash
-npm run dev -- generate .
-```
-
-The generated overview only uses reliable local sources:
-
-1. `package.json.description`
-2. the first heading or useful paragraph from `README.md`
-3. `TODO: describe the project goal.`
-
-When no commands or structure can be detected, Adao writes explicit TODOs instead of inventing context. If scripts such as `test`, `build`, `lint`, or `typecheck` exist, `generate` also adds a `Validation` section with the relevant commands.
-
-### suggest
-
-Prepare a Markdown prompt that can be pasted into Codex or ChatGPT to improve `AGENTS.md`.
-
-```bash
-npm run dev -- suggest .
-npm run dev -- suggest . --json
-```
-
-`suggest` does not call an AI service, does not use the OpenAI API, and does not send project files anywhere. It only uses local scan results, the current generated `AGENTS.md`, the current doctor validation result, and a conservative set of local evidence files.
-
-Use `generate` when you want Adao's deterministic local AGENTS.md draft. Use `suggest` when you want a structured prompt for a separate AI review while keeping Adao itself local-first and deterministic.
-
-The prompt instructs the AI to use only provided evidence, preserve detected commands, avoid inventing project goals or architecture, and write TODOs when evidence is missing.
-
-### apply
-
-Generate the suggested `AGENTS.md`, show a diff when the file already exists, ask for confirmation, and create `AGENTS.md.bak` before overwriting.
-
-```bash
 npm run dev -- apply .
 ```
 
-## Project layout
+## Commands
+
+The current CLI contract is:
 
 ```text
-src/
-  cli.ts
-  core/
-    scanProject.ts
-    detectStack.ts
-    readPackageJson.ts
-    validateAgents.ts
-    generateAgents.ts
-    suggestAgents.ts
-    diffAgents.ts
-    types.ts
-  utils/
-    fs.ts
-    paths.ts
-tests/
-  scanProject.test.ts
-  validateAgents.test.ts
-  generateAgents.test.ts
-  suggestAgents.test.ts
-  cli.test.ts
+adao scan <projectPath> [--json]
+adao doctor <projectPath> [--json]
+adao generate <projectPath>
+adao suggest <projectPath> [--json]
+adao apply <projectPath> [--yes]
+
+adao --help
+adao --version
 ```
+
+`scan`, `doctor`, and `suggest` support optional JSON output. `apply` asks for
+confirmation unless `--yes` is supplied. Invalid usage exits with code `2`;
+operational failures and a `doctor` result containing errors exit with code `1`.
+Usage and operational errors are concise and do not print stack traces.
+
+Each command also supports command-specific help, for example
+`adao apply --help`.
+
+### `scan`
+
+`scan` reads the project tree and collects evidence including:
+
+- project name, package description, and a locally derived overview;
+- languages detected from file extensions;
+- a conservative set of frameworks and tools detected from package metadata;
+- package scripts and package manager evidence;
+- important files and relevant project directories;
+- the presence of `README.md`, Git metadata, and `AGENTS.md`.
+
+The default text output summarizes the scan; `--json` exposes the complete
+structured result, including package description and derived overview fields.
+
+```bash
+adao scan .
+adao scan . --json
+```
+
+The scanner examines up to 5,000 filesystem entries by default and reports how
+many entries it inspected, whether the limit was reached, and any unreadable
+paths. Its text and JSON output expose whether the result is complete. A
+truncated scan or a blocking filesystem error makes the evidence incomplete;
+`doctor` reports that condition as an error, while `generate`, `suggest`, and
+`apply` refuse to continue from partial evidence.
+
+Detection is deliberately finite rather than universal. Language detection is
+extension-based, and framework/tool detection recognizes a defined set of
+package dependencies.
+
+### `doctor`
+
+`doctor` validates the current `AGENTS.md` against detected project evidence
+and reports `error`, `warning`, and `info` issues, followed by a `healthy`,
+`needs attention`, or `broken` status.
+
+```bash
+adao doctor .
+adao doctor . --json
+```
+
+Checks currently cover cases such as:
+
+- a missing `AGENTS.md`;
+- package commands that do not match available `package.json` scripts;
+- commands that use a package manager inconsistent with detected evidence;
+- stack declarations that appear inconsistent with the detected project;
+- vague guidance and excessive file size;
+- possible staleness when `README.md` or `package.json` is newer;
+- a simple package-manager conflict with global `~/.codex/AGENTS.md` guidance;
+- an incomplete project scan.
+
+Stack validation is heuristic and conservative. It looks for assertive stack
+declarations and avoids treating negative guidance or clearly hypothetical
+examples as project facts. A lockfile becoming newer does not, by itself, make
+`AGENTS.md` stale.
+
+### `generate`
+
+`generate` prints an `AGENTS.md` draft without writing files or calling an
+external service.
+
+```bash
+adao generate .
+```
+
+Generation is deterministic and uses only local evidence such as validated
+`package.json` metadata, `README.md`, package scripts, detected stack, package
+manager evidence, and project structure. A package description takes priority
+for the project overview; otherwise Adão uses useful README content. When the
+available evidence is not sufficient, it writes an explicit `TODO` instead of
+inventing a goal, command, stack, or architecture.
+
+Generated content is wrapped in a managed region:
+
+```markdown
+<!-- adao:start -->
+
+<!-- generated content -->
+
+<!-- adao:end -->
+```
+
+These markers let `apply` distinguish Adão-managed content from manual content.
+Generation is blocked when the scan is incomplete, package-manager evidence
+conflicts, or an unsupported `packageManager` declaration has no recognized
+lockfile to resolve it.
+
+### `suggest`
+
+`suggest` prepares a structured Markdown prompt from the local scan, current
+doctor result, deterministic generated draft, and a conservative selection of
+local evidence files.
+
+```bash
+adao suggest .
+adao suggest . --json
+```
+
+It does **not** call the OpenAI API, invoke an LLM, or send project files to any
+service. Adão only prints the prompt (or returns it as part of the JSON result).
+You may then give that prompt separately to Codex, ChatGPT, or another AI for
+review. Adão does not perform that review itself.
+
+The prompt tells the reviewer to use only the supplied evidence, preserve
+detected commands, avoid invented project details, and use TODOs where evidence
+is missing. Evidence files and total prompt evidence are size-limited, and
+truncation is marked in the prompt.
+
+### `apply`
+
+`apply` prepares the same deterministic content as `generate`, shows the
+proposed content or a diff, and asks for confirmation before writing. Use
+`--yes` only when non-interactive confirmation is intended.
+
+```bash
+adao apply .
+adao apply . --yes
+```
+
+Its update behavior depends on the existing file:
+
+- if `AGENTS.md` does not exist, Adão creates a marked file;
+- if valid Adão markers exist, it replaces only the managed region and
+  preserves content before and after it byte for byte;
+- if a legacy `AGENTS.md` has no markers, Adão warns that the whole file will be
+  replaced and that manual content will not remain in the active file. It asks
+  for confirmation and creates a backup before replacement;
+- malformed, duplicated, or incomplete markers are rejected.
+
+For replacements, Adão creates the first available numbered backup
+(`AGENTS.md.bak`, `AGENTS.md.bak.1`, and so on) without overwriting older
+backups. It writes the new content to a temporary file in the same directory,
+flushes and closes it, checks that `AGENTS.md` has not changed since the
+preview, then renames the temporary file over the target. This is an atomic
+replacement strategy on filesystems that provide atomic same-directory rename;
+it is not a claim of absolute atomicity across every filesystem or failure
+mode.
+
+The writer preserves the existing file's permission bits, rejects an
+`AGENTS.md` symbolic link, revalidates content before replacement to reduce the
+risk of overwriting concurrent edits, and removes its temporary file when an
+update fails. Unsafe or incomplete project evidence is rejected before the
+confirmation and write steps.
+
+## Safety guarantees
+
+- **Local-first:** scan, validation, generation, suggestion preparation, and
+  application run locally.
+- **No external upload:** Adão does not send project files to external services.
+- **Deterministic generation:** the same accepted evidence follows fixed local
+  rules; missing context becomes a TODO.
+- **Complete evidence required:** incomplete scans block `generate`, `suggest`,
+  and `apply`, and are errors in `doctor`.
+- **Manual content boundaries:** content outside valid Adão markers is preserved
+  byte for byte. Legacy unmarked files receive an explicit replacement warning
+  and a backup.
+- **Non-destructive backups:** existing backup names are never reused.
+- **Careful replacement:** temporary-file writing, same-directory rename,
+  permission preservation, symlink rejection, and concurrent-content checks
+  reduce write risk.
+- **No silent unsafe overwrite:** invalid markers, conflicting package-manager
+  evidence, incomplete scans, and detected concurrent changes abort the update.
+
+## How it works
+
+1. The filesystem walker skips common generated or vendor directories and
+   records scan completeness.
+2. The scanner validates relevant `package.json` fields and derives a bounded
+   set of facts from filenames, package metadata, README content, and directory
+   structure.
+3. `doctor` compares the current instructions with those facts using
+   conservative checks.
+4. `generate` turns accepted facts into a short marked baseline. `suggest`
+   packages that baseline and selected evidence into a prompt for an external
+   reviewer.
+5. `apply` previews the exact next file and uses the guarded write workflow
+   described above.
+
+Adão itself has no network or AI integration. Only the separately chosen tool
+that receives a `suggest` prompt would perform an AI review.
+
+## Current limitations
+
+- The current heuristics are initially optimized for Node.js and TypeScript
+  projects, although the scanner recognizes a limited set of other file
+  extensions and ecosystems.
+- Stack and tool detection is based on a defined package-dependency list; it
+  does not identify every framework or infer arbitrary architecture.
+- `AGENTS.md` validation is conservative and cannot fully understand natural
+  language or prove that instructions are semantically correct.
+- `suggest` selects a bounded set of conventional evidence files rather than
+  understanding the entire repository semantically.
+- There is no embedded LLM, GUI, plugin system, database, or automatic
+  project-wide semantic analysis.
+- `@laurowd/adao` is prepared for npm publication but is not published yet.
+
+## Development
+
+Install the locked dependencies and run the main checks:
+
+```bash
+npm ci
+npm test
+npm run build
+npm audit
+```
+
+Package validation is available locally as well:
+
+```bash
+npm pack --dry-run
+npm run test:package
+```
+
+`npm run test:package` builds a real tarball, installs it into a temporary
+project, verifies `adao --help`, `adao --version`, and `adao scan`, and checks
+that development-only files and dependencies are not shipped.
+
+The GitHub Actions workflow currently runs the test suite and build on Node.js
+18 and Node.js 22. A separate Node.js 22 packaging job runs `npm audit`, inspects
+an npm package dry run, then installs and executes the real tarball.
+
+## Project structure
+
+```text
+.github/workflows/
+  ci.yml                    # Node 18/22 tests, build, audit, and package checks
+scripts/
+  clean.mjs                 # removes compiled output before builds
+  package-smoke.mjs         # packs, installs, and executes the real tarball
+src/
+  cli.ts                    # command dispatch, formatting, and exit behavior
+  cliArgs.ts                # strict command and flag parsing
+  packageVersion.ts         # reads the CLI version from package.json
+  core/
+    applyAgents.ts          # managed regions, backups, and guarded writes
+    detectStack.ts          # language, tool, structure, and manager detection
+    diffAgents.ts           # line-oriented preview diff
+    generateAgents.ts       # deterministic managed AGENTS.md generation
+    readPackageJson.ts      # package metadata parsing and validation
+    scanProject.ts          # scan orchestration and completeness guards
+    suggestAgents.ts        # local evidence selection and prompt construction
+    types.ts                # shared domain types
+    validateAgents.ts       # doctor rules and status calculation
+  utils/
+    fs.ts                   # bounded filesystem traversal
+    paths.ts                # path normalization helpers
+tests/                      # unit and CLI workflow coverage
+```
+
+## License
+
+[MIT License](LICENSE)

@@ -145,7 +145,13 @@ function run(command, args, options) {
 }
 
 function assertPackageContents(files) {
-  const requiredFiles = ["README.md", "package.json", "dist/cli.js"];
+  const requiredFiles = [
+  "README.md",
+  "README.pt-BR.md",
+  "LICENSE",
+  "package.json",
+  "dist/cli.js"
+];
   const forbiddenPatterns = [
     /^(?:src|tests|scripts|coverage)\//,
     /^AGENTS\.md(?:\.bak(?:\.\d+)?)?$/,
@@ -160,12 +166,13 @@ function assertPackageContents(files) {
   }
 
   const unexpectedFile = files.find(
-    (file) =>
-      !file.startsWith("dist/") &&
-      file !== "README.md" &&
-      file !== "package.json" &&
-      !/^LICENSE(?:\.|$)/i.test(file)
-  );
+  (file) =>
+    !file.startsWith("dist/") &&
+    file !== "README.md" &&
+    file !== "README.pt-BR.md" &&
+    file !== "package.json" &&
+    !/^LICENSE(?:\.|$)/i.test(file)
+);
   const forbiddenFile = files.find((file) =>
     forbiddenPatterns.some((pattern) => pattern.test(file))
   );
