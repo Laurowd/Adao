@@ -23,6 +23,8 @@ This MVP is intentionally deterministic: no LLM, no external API, no database, n
 - `npm run dev -- doctor . --json`: Validate and print machine-readable output
 - `npm run dev -- generate .`: Generate suggested `AGENTS.md` content
 - `npm run dev -- apply .`: Preview and apply generated `AGENTS.md`
+- `npm run dev -- suggest .`: Build a structured prompt from local evidence
+- `npm run test:package`: Build, install, and execute the real npm tarball
 - `npm run build`: Compile TypeScript
 - `npm run test`: Run tests
 - `npm audit`: Check dependency vulnerabilities
@@ -50,6 +52,11 @@ When changing CLI behavior, also run at least:
 - `npm run dev -- doctor .`
 - `npm run dev -- doctor . --json`
 - `npm run dev -- generate .`
+
+When changing package or CLI distribution behavior, also run:
+
+- `npm run test:package`
+- `npm pack --dry-run`
 
 ## Agent rules
 
