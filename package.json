@@ -2,6 +2,7 @@
   "name": "@laurowd/adao",
   "version": "0.1.0",
   "description": "Local-first CLI for scanning projects and maintaining reliable AGENTS.md context.",
+  "license": "MIT",
   "keywords": [
     "agents.md",
     "ai-agents",
