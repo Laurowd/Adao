@@ -2,6 +2,7 @@
 
 [![CI status](https://github.com/Laurowd/Adao/actions/workflows/ci.yml/badge.svg)](https://github.com/Laurowd/Adao/actions/workflows/ci.yml)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![npm version](https://img.shields.io/npm/v/%40laurowd%2Fadao.svg)](https://www.npmjs.com/package/@laurowd/adao)
 
 English | [Português](README.pt-BR.md)
 
@@ -23,23 +24,27 @@ only the content Adão manages when markers are present.
 
 ## Quick start
 
-Adão requires Node.js 18 or later. The package is prepared as
-`@laurowd/adao`, but it has **not been published to npm yet**. To use the
-current version from a checkout:
-
-```bash
-git clone https://github.com/Laurowd/Adao.git
-cd Adao
-npm ci
-npm run build
-node dist/cli.js --help
-```
-
-The planned commands below apply only **after the package is published**:
+Adão requires Node.js 18 or later. Version 0.1.0 is available on npm as
+`@laurowd/adao`:
 
 ```bash
 npm install -g @laurowd/adao
-npx @laurowd/adao --help
+```
+
+Use the installed `adao` command in a project:
+
+```bash
+adao scan .
+adao doctor .
+adao generate .
+adao suggest .
+adao apply .
+```
+
+To run a command without installing Adão globally:
+
+```bash
+npx @laurowd/adao scan .
 ```
 
 The five project commands cover distinct parts of the workflow:
@@ -51,16 +56,6 @@ The five project commands cover distinct parts of the workflow:
 | `generate` | Print a deterministic `AGENTS.md` baseline derived from local evidence. |
 | `suggest` | Build a structured prompt for a separate review by Codex, ChatGPT, or another AI. |
 | `apply` | Preview and safely write the generated managed content. |
-
-From a development checkout:
-
-```bash
-npm run dev -- scan .
-npm run dev -- doctor .
-npm run dev -- generate .
-npm run dev -- suggest .
-npm run dev -- apply .
-```
 
 ## Commands
 
@@ -287,9 +282,28 @@ that receives a `suggest` prompt would perform an AI review.
   understanding the entire repository semantically.
 - There is no embedded LLM, GUI, plugin system, database, or automatic
   project-wide semantic analysis.
-- `@laurowd/adao` is prepared for npm publication but is not published yet.
 
 ## Development
+
+To work from a repository checkout:
+
+```bash
+git clone https://github.com/Laurowd/Adao.git
+cd Adao
+npm ci
+npm run build
+node dist/cli.js --help
+```
+
+Run the CLI directly from TypeScript during development:
+
+```bash
+npm run dev -- scan .
+npm run dev -- doctor .
+npm run dev -- generate .
+npm run dev -- suggest .
+npm run dev -- apply .
+```
 
 Install the locked dependencies and run the main checks:
 

@@ -2,6 +2,7 @@
 
 [![Status da CI](https://github.com/Laurowd/Adao/actions/workflows/ci.yml/badge.svg)](https://github.com/Laurowd/Adao/actions/workflows/ci.yml)
 [![Licença MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-blue.svg)](LICENSE)
+[![Versão no npm](https://img.shields.io/npm/v/%40laurowd%2Fadao.svg)](https://www.npmjs.com/package/@laurowd/adao)
 
 [English](README.md) | Português
 
@@ -24,24 +25,27 @@ estão presentes.
 
 ## Início rápido
 
-O Adão requer Node.js 18 ou mais recente. O pacote está preparado como
-`@laurowd/adao`, mas **ainda não foi publicado no npm**. Para usar a versão atual
-a partir de um checkout:
-
-```bash
-git clone https://github.com/Laurowd/Adao.git
-cd Adao
-npm ci
-npm run build
-node dist/cli.js --help
-```
-
-Os comandos planejados abaixo se aplicam somente **depois que o pacote for
-publicado**:
+O Adão requer Node.js 18 ou mais recente. A versão 0.1.0 está disponível no npm
+como `@laurowd/adao`:
 
 ```bash
 npm install -g @laurowd/adao
-npx @laurowd/adao --help
+```
+
+Use o comando `adao` instalado em um projeto:
+
+```bash
+adao scan .
+adao doctor .
+adao generate .
+adao suggest .
+adao apply .
+```
+
+Para executar um comando sem instalar o Adão globalmente:
+
+```bash
+npx @laurowd/adao scan .
 ```
 
 Os cinco comandos de projeto cobrem partes diferentes do fluxo:
@@ -53,16 +57,6 @@ Os cinco comandos de projeto cobrem partes diferentes do fluxo:
 | `generate` | Imprimir uma base determinística de `AGENTS.md` derivada de evidências locais. |
 | `suggest` | Montar um prompt estruturado para uma revisão separada por Codex, ChatGPT ou outra IA. |
 | `apply` | Visualizar e gravar com segurança o conteúdo gerenciado gerado. |
-
-A partir de um checkout de desenvolvimento:
-
-```bash
-npm run dev -- scan .
-npm run dev -- doctor .
-npm run dev -- generate .
-npm run dev -- suggest .
-npm run dev -- apply .
-```
 
 ## Comandos
 
@@ -300,10 +294,28 @@ revisão por IA.
   em vez de compreender semanticamente o repositório inteiro.
 - Não há LLM embutido, interface gráfica, sistema de plugins, banco de dados ou
   análise semântica automática de todo o projeto.
-- `@laurowd/adao` está preparado para publicação no npm, mas ainda não foi
-  publicado.
 
 ## Desenvolvimento
+
+Para trabalhar a partir de um checkout do repositório:
+
+```bash
+git clone https://github.com/Laurowd/Adao.git
+cd Adao
+npm ci
+npm run build
+node dist/cli.js --help
+```
+
+Execute a CLI diretamente do TypeScript durante o desenvolvimento:
+
+```bash
+npm run dev -- scan .
+npm run dev -- doctor .
+npm run dev -- generate .
+npm run dev -- suggest .
+npm run dev -- apply .
+```
 
 Instale as dependências travadas e execute as principais verificações:
 
