@@ -111,6 +111,11 @@ truncated scan or a blocking filesystem error makes the evidence incomplete;
 `doctor` reports that condition as an error, while `generate`, `suggest`, and
 `apply` refuse to continue from partial evidence.
 
+Scan completeness refers to filesystem traversal completeness. It does not mean
+universal understanding of every framework, nested package, or project
+architecture. The current version reads dependency metadata from the root
+`package.json` only and does not aggregate nested `package.json` files.
+
 Detection is deliberately finite rather than universal. Language detection is
 extension-based, and framework/tool detection recognizes a defined set of
 package dependencies.
@@ -237,8 +242,8 @@ confirmation and write steps.
 - **No external upload:** Adão does not send project files to external services.
 - **Deterministic generation:** the same accepted evidence follows fixed local
   rules; missing context becomes a TODO.
-- **Complete evidence required:** incomplete scans block `generate`, `suggest`,
-  and `apply`, and are errors in `doctor`.
+- **Complete filesystem traversal required:** truncated scans or blocking read
+  errors stop `generate`, `suggest`, and `apply`, and are errors in `doctor`.
 - **Manual content boundaries:** content outside valid Adão markers is preserved
   byte for byte. Legacy unmarked files receive an explicit replacement warning
   and a backup.
@@ -253,9 +258,9 @@ confirmation and write steps.
 
 1. The filesystem walker skips common generated or vendor directories and
    records scan completeness.
-2. The scanner validates relevant `package.json` fields and derives a bounded
-   set of facts from filenames, package metadata, README content, and directory
-   structure.
+2. The scanner validates relevant fields from the root `package.json` and
+   derives a bounded set of facts from filenames, package metadata, README
+   content, and directory structure.
 3. `doctor` compares the current instructions with those facts using
    conservative checks.
 4. `generate` turns accepted facts into a short marked baseline. `suggest`
@@ -274,6 +279,8 @@ that receives a `suggest` prompt would perform an AI review.
   extensions and ecosystems.
 - Stack and tool detection is based on a defined package-dependency list; it
   does not identify every framework or infer arbitrary architecture.
+- Nested `package.json` files are not aggregated. Dependencies and scripts from
+  nested applications or packages are outside the detected root stack.
 - `AGENTS.md` validation is conservative and cannot fully understand natural
   language or prove that instructions are semantically correct.
 - `suggest` selects a bounded set of conventional evidence files rather than

@@ -78,6 +78,40 @@ describe("scanProject", () => {
     });
   });
 
+  it("exposes Fastify, PostgreSQL, and Cypress from the root package.json", async () => {
+    const fixture = await createFixture();
+    await writeJson(path.join(fixture, "package.json"), {
+      dependencies: {
+        fastify: "^5.0.0",
+        postgres: "^3.0.0"
+      },
+      devDependencies: {
+        cypress: "^15.0.0"
+      }
+    });
+
+    const scan = await scanProject(fixture);
+
+    expect(scan.frameworks).toEqual(["Fastify", "PostgreSQL", "Cypress"]);
+  });
+
+  it("does not aggregate dependencies from a nested package.json", async () => {
+    const fixture = await createFixture();
+    await writeJson(path.join(fixture, "package.json"), {
+      dependencies: { fastify: "^5.0.0" }
+    });
+    await fs.mkdir(path.join(fixture, "web"));
+    await writeJson(path.join(fixture, "web", "package.json"), {
+      dependencies: { vue: "^3.0.0" },
+      devDependencies: { vite: "^6.0.0" }
+    });
+
+    const scan = await scanProject(fixture);
+
+    expect(scan.frameworks).toEqual(["Fastify"]);
+    expect(scan.frameworks).not.toContain("Vite");
+  });
+
   it("uses a recognized packageManager value when no lockfile exists", async () => {
     const fixture = await createFixture();
     await writeJson(path.join(fixture, "package.json"), {

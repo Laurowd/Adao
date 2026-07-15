@@ -115,6 +115,11 @@ truncado ou um erro bloqueante de filesystem torna as evidências incompletas;
 `doctor` relata essa condição como erro, enquanto `generate`, `suggest` e `apply`
 se recusam a continuar a partir de evidências parciais.
 
+A completude do scan se refere à completude da travessia do filesystem. Isso não
+significa compreensão universal de todo framework, pacote aninhado ou arquitetura
+do projeto. A versão atual lê metadados de dependências somente do `package.json`
+da raiz e não agrega arquivos `package.json` aninhados.
+
 A detecção é deliberadamente finita, não universal. A detecção de linguagens se
 baseia em extensões, e a de frameworks e ferramentas reconhece um conjunto
 definido de dependências de pacote.
@@ -246,8 +251,9 @@ rejeitadas antes das etapas de confirmação e escrita.
   externos.
 - **Geração determinística:** as mesmas evidências aceitas seguem regras locais
   fixas; contexto ausente se torna um TODO.
-- **Evidência completa obrigatória:** scans incompletos bloqueiam `generate`,
-  `suggest` e `apply` e são erros no `doctor`.
+- **Travessia completa do filesystem obrigatória:** scans truncados ou erros
+  bloqueantes de leitura interrompem `generate`, `suggest` e `apply` e são erros
+  no `doctor`.
 - **Limites do conteúdo manual:** o conteúdo fora de marcadores válidos do Adão
   é preservado byte a byte. Arquivos legados sem marcadores recebem aviso
   explícito de substituição e um backup.
@@ -263,9 +269,9 @@ rejeitadas antes das etapas de confirmação e escrita.
 
 1. O varredor do sistema de arquivos ignora diretórios comuns de artefatos gerados
    ou dependências e registra se o scan está completo.
-2. O scanner valida os campos relevantes do `package.json` e deriva um conjunto
-   limitado de fatos a partir de nomes de arquivos, metadados do pacote, conteúdo
-   do README e estrutura de diretórios.
+2. O scanner valida os campos relevantes do `package.json` da raiz e deriva um
+   conjunto limitado de fatos a partir de nomes de arquivos, metadados do pacote,
+   conteúdo do README e estrutura de diretórios.
 3. `doctor` compara as instruções atuais com esses fatos usando verificações
    conservadoras.
 4. `generate` transforma fatos aceitos em uma base curta e marcada. `suggest`
@@ -285,6 +291,8 @@ revisão por IA.
 - A detecção de stack e ferramentas se baseia em uma lista definida de
   dependências de pacote; ela não identifica todo framework nem infere
   arquiteturas arbitrárias.
+- Arquivos `package.json` aninhados não são agregados. Dependências e scripts de
+  aplicações ou pacotes aninhados ficam fora da stack detectada na raiz.
 - A validação de `AGENTS.md` é conservadora e não consegue compreender por
   completo linguagem natural ou provar que as instruções estão semanticamente
   corretas.

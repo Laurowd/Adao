@@ -130,8 +130,10 @@ export function detectFrameworksAndTools(
   addIfDependency(detected, dependencies, "Next.js", ["next"]);
   addIfDependency(detected, dependencies, "Vite", ["vite"]);
   addIfDependency(detected, dependencies, "Express", ["express"]);
+  addIfDependency(detected, dependencies, "Fastify", ["fastify"]);
   addIfDependency(detected, dependencies, "NestJS", ["@nestjs/core"]);
   addIfDependency(detected, dependencies, "Prisma", ["prisma", "@prisma/client"]);
+  addIfDependency(detected, dependencies, "PostgreSQL", ["postgres"]);
   addIfDependency(detected, dependencies, "Tailwind CSS", ["tailwindcss"]);
   addIfDependency(detected, dependencies, "Vitest", ["vitest"]);
   addIfDependency(detected, dependencies, "Jest", ["jest"]);
@@ -139,6 +141,7 @@ export function detectFrameworksAndTools(
     "@playwright/test",
     "playwright"
   ]);
+  addIfDependency(detected, dependencies, "Cypress", ["cypress"]);
   addIfDependency(detected, dependencies, "ESLint", ["eslint"]);
   addIfDependency(detected, dependencies, "Prettier", ["prettier"]);
 

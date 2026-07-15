@@ -68,6 +68,26 @@ describe("generateAgentsContent", () => {
     expect(content).toContain("TODO: document common commands.");
   });
 
+  it("includes newly detected root technologies in the generated stack", async () => {
+    const fixture = await createFixture();
+    await writeJson(path.join(fixture, "package.json"), {
+      dependencies: {
+        fastify: "^5.0.0",
+        postgres: "^3.0.0"
+      },
+      devDependencies: {
+        cypress: "^15.0.0"
+      }
+    });
+
+    const scan = await scanProject(fixture);
+    const content = generateAgentsContent(scan);
+
+    expect(content).toContain("- Fastify");
+    expect(content).toContain("- PostgreSQL");
+    expect(content).toContain("- Cypress");
+  });
+
   it("uses README heading as overview when package.json has no description", async () => {
     const fixture = await createFixture();
     await writeJson(path.join(fixture, "package.json"), {
